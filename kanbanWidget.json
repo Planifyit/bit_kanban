@@ -12,12 +12,23 @@
     {
       "kind": "main",
       "tag": "planifyit-kanban-widget",
-      "url": "https://planifyit.github.io/bit_kanban/kanban-widget.js"
+      "url": "https://planifyit.github.io/bit_kanban/kanban-widget.js",
+                  "integrity": "",
+            "ignoreIntegrity": true
+    },
+    {
+      "kind": "builder",
+      "tag": "com-planifyit-kanban-builder",
+      "url": "https://planifyit.github.io/bit_kanban/builder-panel.js",
+                  "integrity": "",
+            "ignoreIntegrity": true
     },
     {
       "kind": "styling",
       "tag": "com-planifyit-kanban-styling",
-      "url": "https://planifyit.github.io/bit_kanban/styling-panel.js"
+      "url": "https://planifyit.github.io/bit_kanban/styling-panel.js",
+                  "integrity": "",
+            "ignoreIntegrity": true
     }
   ],
   "properties": {
