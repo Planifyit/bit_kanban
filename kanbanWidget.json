@@ -1,0 +1,148 @@
+{
+  "name": "PlanifyIT Kanban",
+  "description": "PlanifyIT Kanban Widget for SAC with live BW model binding (read-only)",
+  "newInstancePrefix": "planifyit_kanban",
+  "eula": "",
+  "vendor": "Planifyit GmbH",
+  "license": "MIT",
+  "id": "planifyit_kanban",
+  "version": "1.0.0",
+  "icon": "https://planifyit.github.io/bit_kanban/PlanifyIT_Logo2.png",
+  "webcomponents": [
+    {
+      "kind": "main",
+      "tag": "planifyit-kanban-widget",
+      "url": "https://planifyit.github.io/bit_kanban/kanban-widget.js"
+    },
+    {
+      "kind": "builder",
+      "tag": "com-planifyit-kanban-builder",
+      "url": "https://planifyit.github.io/bit_kanban/builder-panel.js"
+    },
+    {
+      "kind": "styling",
+      "tag": "com-planifyit-kanban-styling",
+      "url": "https://planifyit.github.io/bit_kanban/styling-panel.js"
+    }
+  ],
+  "properties": {
+    "fieldMappings": {
+      "type": "string",
+      "description": "JSON: which BW dimension/measure key fills each role (phase, title, owner, ha, bu, subp, year, amount)",
+      "default": "{}"
+    },
+    "showFilters": {
+      "type": "boolean",
+      "description": "Show the filter bar above the kanban grid",
+      "default": true
+    },
+    "filterConfig": {
+      "type": "string",
+      "description": "JSON: which filters are visible {ha:true, bu:true, subp:true, year:true}",
+      "default": "{\"ha\":true,\"bu\":true,\"subp\":true,\"year\":true}"
+    },
+    "widgetTitle": {
+      "type": "string",
+      "description": "Widget header title",
+      "default": "Vorhaben Übersicht"
+    },
+    "headerBg": {
+      "type": "string",
+      "description": "Header background color",
+      "default": "#2c4762"
+    },
+    "headerFg": {
+      "type": "string",
+      "description": "Header foreground (text) color",
+      "default": "#ffffff"
+    },
+    "fontFamily": {
+      "type": "string",
+      "description": "Widget font family",
+      "default": "Source Sans 3, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    },
+    "phasePalette": {
+      "type": "string",
+      "description": "JSON map: phase value -> hex color",
+      "default": "{}"
+    },
+    "density": {
+      "type": "string",
+      "description": "Card density: compact | comfortable",
+      "default": "comfortable"
+    },
+    "cornerRadius": {
+      "type": "integer",
+      "description": "Corner radius in px (0-14)",
+      "default": 4
+    },
+    "columnGap": {
+      "type": "integer",
+      "description": "Gap between columns in px (4-24)",
+      "default": 10
+    },
+    "cardShadow": {
+      "type": "boolean",
+      "description": "Show card drop-shadow",
+      "default": true
+    },
+    "showTotals": {
+      "type": "boolean",
+      "description": "Show CHF totals in column summary",
+      "default": true
+    },
+    "showAvatars": {
+      "type": "boolean",
+      "description": "Show owner avatars on cards",
+      "default": true
+    },
+    "selectedCardId": {
+      "type": "string",
+      "description": "ID of the currently selected card",
+      "default": ""
+    },
+    "width": {
+      "type": "integer",
+      "default": 1100
+    },
+    "height": {
+      "type": "integer",
+      "default": 520
+    }
+  },
+  "methods": {
+    "getSelectedCard": {
+      "returnType": "string",
+      "description": "Get the ID of the currently selected card",
+      "parameters": [],
+      "body": "return this.selectedCardId || '';"
+    },
+    "getFieldMappings": {
+      "returnType": "string",
+      "description": "Get the current field mappings as a JSON string",
+      "parameters": [],
+      "body": "return this.fieldMappings || '{}';"
+    }
+  },
+  "events": {
+    "onCardSelected": {
+      "description": "Fired when a card is clicked."
+    }
+  },
+  "dataBindings": {
+    "kanbanDataBinding": {
+      "feeds": [
+        {
+          "id": "dimensions",
+          "description": "Dimensions",
+          "type": "dimension"
+        },
+        {
+          "id": "measures",
+          "description": "Measures",
+          "type": "mainStructureMember"
+        }
+      ]
+    }
+  }
+}
