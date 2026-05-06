@@ -15,11 +15,6 @@
       "url": "https://planifyit.github.io/bit_kanban/kanban-widget.js"
     },
     {
-      "kind": "builder",
-      "tag": "com-planifyit-kanban-builder",
-      "url": "https://planifyit.github.io/bit_kanban/builder-panel.js"
-    },
-    {
       "kind": "styling",
       "tag": "com-planifyit-kanban-styling",
       "url": "https://planifyit.github.io/bit_kanban/styling-panel.js"

@@ -11,6 +11,7 @@
                 --sap-border-strong: #b3b9c2;
                 --sap-text: #32363a;
                 --sap-text-muted: #6a6d70;
+                --sap-text-subtle: #89919a;
                 --sap-blue: #0a6ed1;
                 --sap-input-hover: #ebf5fe;
                 --sap-panel-bg-2: #f7f8fa;
@@ -69,6 +70,21 @@
             .sac-switch.on { background: var(--sap-blue); }
             .sac-switch.on::after { transform: translateX(18px); }
 
+            .stat-row {
+                display: flex; gap: 14px;
+                padding: 8px 10px;
+                background: var(--sap-panel-bg-2);
+                border: 1px solid var(--sap-border);
+                border-radius: var(--radius-sm);
+            }
+            .stat-row .stat { flex: 1; }
+            .stat .v { font-size: 16px; font-weight: 700; color: var(--sap-text); line-height: 1.1; }
+            .stat .k { font-size: 11px; color: var(--sap-text-muted); }
+
+            .role-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; }
+            .role-row > label { font-size: 12px; color: var(--sap-text); }
+            .role-row .req { color: #c95a6e; margin-left: 2px; }
+
             .palette-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
             .palette-card {
                 border: 1px solid var(--sap-border);
@@ -119,7 +135,43 @@
                 background: #fffbe6; border: 1px solid #f0e2a4;
                 padding: 8px 10px; border-radius: var(--radius-sm);
             }
+            .info-hint {
+                font-size: 11px; color: var(--sap-text-muted); line-height: 1.4;
+            }
         </style>
+
+        <div class="panel-section">
+            <div class="section-head">Datenquelle</div>
+            <div class="section-body">
+                <div id="ds-empty" class="empty-hint" style="display:none;">
+                    Keine Datenbindung. Bitte zuerst im Builder-Panel oben das BW-Modell auswählen und Dimensionen/Kennzahlen zuweisen.
+                </div>
+                <div class="stat-row" id="ds-stats">
+                    <div class="stat"><div class="v" id="ds-rows">0</div><div class="k">Datensätze</div></div>
+                    <div class="stat"><div class="v" id="ds-dims">0</div><div class="k">Dimensionen</div></div>
+                    <div class="stat"><div class="v" id="ds-meas">0</div><div class="k">Kennzahlen</div></div>
+                </div>
+                <div class="info-hint">
+                    Modell und Feeds werden im Standard-Builder von SAC zugewiesen. Hier ordnest du jedem zugewiesenen Feld eine Rolle im Kanban zu.
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-head">Felder · Rollen</div>
+            <div class="section-body" id="dim-section"></div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-head">Filter</div>
+            <div class="section-body">
+                <div class="row">
+                    <label>Filter-Leiste anzeigen</label>
+                    <div class="sac-switch" id="sw-show-filters"></div>
+                </div>
+                <div id="filter-toggles"></div>
+            </div>
+        </div>
 
         <div class="panel-section">
             <div class="section-head">Allgemein</div>
@@ -176,7 +228,7 @@
                 <div class="field">
                     <label>Pro Phase</label>
                     <div id="phase-rows">
-                        <div class="empty-hint" id="phase-empty">Keine Phasen erkannt. Bitte im Builder eine Phase-Dimension zuweisen und Daten laden.</div>
+                        <div class="empty-hint" id="phase-empty">Keine Phasen erkannt. Bitte oben eine Phase-Dimension zuweisen.</div>
                     </div>
                 </div>
             </div>
@@ -243,6 +295,24 @@
         { id: 'mono',    name: 'Mono',    colors: ['#1f3b56', '#324b66', '#475e76', '#5b6f86', '#708296', '#8595a6'] }
     ];
 
+    const ROLES = [
+        { key: 'phase',  label: 'Phase (Spalte)',    kind: 'dim',  required: true },
+        { key: 'title',  label: 'Card Titel',        kind: 'dim',  required: true },
+        { key: 'owner',  label: 'Verantwortlich',    kind: 'dim',  required: false },
+        { key: 'ha',     label: 'Hauptabteilung',    kind: 'dim',  required: false },
+        { key: 'bu',     label: 'Business Unit',     kind: 'dim',  required: false },
+        { key: 'subp',   label: 'Sub-Phase',         kind: 'dim',  required: false },
+        { key: 'year',   label: 'Jahr',              kind: 'dim',  required: false },
+        { key: 'amount', label: 'Betrag (Kennzahl)', kind: 'meas', required: false }
+    ];
+
+    const FILTER_DEFS = [
+        { key: 'ha',   label: 'HA' },
+        { key: 'bu',   label: 'BU' },
+        { key: 'subp', label: 'Phasen' },
+        { key: 'year', label: 'Jahr' }
+    ];
+
     function safeParse(v, fb) {
         if (v === null || v === undefined) return fb;
         if (typeof v === 'object') return v;
@@ -254,6 +324,15 @@
             super();
             this._shadowRoot = this.attachShadow({ mode: 'open' });
             this._shadowRoot.appendChild(template.content.cloneNode(true));
+
+            this._dsEmpty = this._shadowRoot.getElementById('ds-empty');
+            this._dsStats = this._shadowRoot.getElementById('ds-stats');
+            this._dsRows  = this._shadowRoot.getElementById('ds-rows');
+            this._dsDims  = this._shadowRoot.getElementById('ds-dims');
+            this._dsMeas  = this._shadowRoot.getElementById('ds-meas');
+            this._dimSection = this._shadowRoot.getElementById('dim-section');
+            this._filterToggles = this._shadowRoot.getElementById('filter-toggles');
+            this._swShowFilters = this._shadowRoot.getElementById('sw-show-filters');
 
             this._inTitle      = this._shadowRoot.getElementById('in-title');
             this._inFont       = this._shadowRoot.getElementById('in-font');
@@ -288,11 +367,18 @@
                 showAvatars: true
             };
             this._dataBinding = null;
-            this._phaseDimKey = null;
+            this._dimMeta = {};
+            this._measMeta = {};
+            this._fieldMappings = {};
+            this._showFilters = true;
+            this._filterConfig = { ha: true, bu: true, subp: true, year: true };
             this._phaseValues = [];
-            this._fieldMappingsRaw = '{}';
 
-            this._wireInputs();
+            this._wireBuilderInputs();
+            this._wireStylingInputs();
+
+            this._renderDimensions();
+            this._renderFilterToggles();
             this._renderHeaderPresets();
             this._renderPalettePresets();
             this._renderPhaseRows();
@@ -301,12 +387,135 @@
 
         set dataBinding(db) {
             this._dataBinding = db || null;
+            this._extractMeta();
+            this._renderDataSourceStats();
+            this._renderDimensions();
+            this._renderFilterToggles();
             this._recomputePhaseValues();
             this._renderPhaseRows();
         }
         get dataBinding() { return this._dataBinding; }
 
-        _wireInputs() {
+        _extractMeta() {
+            const dimMeta = {};
+            const measMeta = {};
+            const db = this._dataBinding;
+            if (db && db.metadata) {
+                const dims = db.metadata.dimensions;
+                if (dims && typeof dims === 'object' && !Array.isArray(dims)) {
+                    Object.keys(dims).forEach(k => {
+                        const m = dims[k];
+                        dimMeta[k] = { key: k, label: (m && (m.description || m.label || m.id)) || k };
+                    });
+                }
+                const meas = db.metadata.mainStructureMembers;
+                if (meas && typeof meas === 'object' && !Array.isArray(meas)) {
+                    Object.keys(meas).forEach(k => {
+                        const m = meas[k];
+                        measMeta[k] = { key: k, label: (m && (m.label || m.id)) || k };
+                    });
+                }
+            }
+            this._dimMeta = dimMeta;
+            this._measMeta = measMeta;
+        }
+
+        _renderDataSourceStats() {
+            const hasMeta = Object.keys(this._dimMeta).length + Object.keys(this._measMeta).length > 0;
+            const rowCount = (this._dataBinding && Array.isArray(this._dataBinding.data)) ? this._dataBinding.data.length : 0;
+            this._dsEmpty.style.display = hasMeta ? 'none' : '';
+            this._dsStats.style.display = hasMeta ? '' : 'none';
+            this._dsRows.textContent = rowCount;
+            this._dsDims.textContent = Object.keys(this._dimMeta).length;
+            this._dsMeas.textContent = Object.keys(this._measMeta).length;
+        }
+
+        _wireBuilderInputs() {
+            this._swShowFilters.addEventListener('click', () => {
+                this._showFilters = !this._showFilters;
+                this._swShowFilters.classList.toggle('on', this._showFilters);
+                this._dispatch(['showFilters']);
+            });
+        }
+
+        _renderDimensions() {
+            this._dimSection.innerHTML = '';
+
+            ROLES.forEach(role => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'role-row';
+
+                const lbl = document.createElement('label');
+                lbl.textContent = role.label;
+                if (role.required) {
+                    const req = document.createElement('span');
+                    req.className = 'req';
+                    req.textContent = '*';
+                    lbl.appendChild(req);
+                }
+                rowEl.appendChild(lbl);
+
+                const wrap = document.createElement('div');
+                wrap.className = 'select-wrap';
+                const sel = document.createElement('select');
+                sel.className = 'sac-input';
+                sel.dataset.role = role.key;
+
+                const optNone = document.createElement('option');
+                optNone.value = '';
+                optNone.textContent = role.required ? '— bitte wählen —' : '— keine —';
+                sel.appendChild(optNone);
+
+                const meta = role.kind === 'dim' ? this._dimMeta : this._measMeta;
+                Object.values(meta).forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.key;
+                    opt.textContent = `${m.label}  (${m.key})`;
+                    sel.appendChild(opt);
+                });
+
+                const current = this._fieldMappings[role.key] || '';
+                if (current && meta[current]) sel.value = current;
+
+                sel.addEventListener('change', (e) => {
+                    const v = e.target.value;
+                    if (v) this._fieldMappings[role.key] = v;
+                    else delete this._fieldMappings[role.key];
+                    if (role.key === 'phase') {
+                        this._recomputePhaseValues();
+                        this._renderPhaseRows();
+                    }
+                    this._dispatch(['fieldMappings']);
+                });
+
+                wrap.appendChild(sel);
+                rowEl.appendChild(wrap);
+                this._dimSection.appendChild(rowEl);
+            });
+        }
+
+        _renderFilterToggles() {
+            this._filterToggles.innerHTML = '';
+            FILTER_DEFS.forEach(def => {
+                const row = document.createElement('div');
+                row.className = 'row';
+                const lbl = document.createElement('label');
+                lbl.textContent = `Filter "${def.label}" anzeigen`;
+                const sw = document.createElement('div');
+                sw.className = 'sac-switch';
+                if (this._filterConfig[def.key]) sw.classList.add('on');
+                sw.addEventListener('click', () => {
+                    this._filterConfig[def.key] = !this._filterConfig[def.key];
+                    sw.classList.toggle('on', this._filterConfig[def.key]);
+                    this._dispatch(['filterConfig']);
+                });
+                row.appendChild(lbl);
+                row.appendChild(sw);
+                this._filterToggles.appendChild(row);
+            });
+        }
+
+        _wireStylingInputs() {
             this._inTitle.addEventListener('input', () => { this._props.widgetTitle = this._inTitle.value; this._dispatch(['widgetTitle']); });
             this._inFont.addEventListener('change', () => { this._props.fontFamily = this._inFont.value; this._dispatch(['fontFamily']); });
 
@@ -421,8 +630,7 @@
         _recomputePhaseValues() {
             this._phaseValues = [];
             if (!this._dataBinding || !Array.isArray(this._dataBinding.data)) return;
-            const fm = safeParse(this._fieldMappingsRaw, {});
-            const phaseKey = fm.phase;
+            const phaseKey = this._fieldMappings.phase;
             if (!phaseKey) return;
             const seen = new Set();
             for (const r of this._dataBinding.data) {
@@ -436,7 +644,6 @@
                 const s = String(v);
                 if (!seen.has(s)) { seen.add(s); this._phaseValues.push(s); }
             }
-            this._phaseDimKey = phaseKey;
         }
 
         _renderPhaseRows() {
@@ -502,12 +709,16 @@
             this._swShadow.classList.toggle('on', !!this._props.cardShadow);
             this._swTotals.classList.toggle('on', !!this._props.showTotals);
             this._swAvatars.classList.toggle('on', !!this._props.showAvatars);
+            this._swShowFilters.classList.toggle('on', !!this._showFilters);
         }
 
         _dispatch(keys) {
             const props = {};
             keys.forEach(k => {
-                if (k === 'phasePalette') props.phasePalette = JSON.stringify(this._props.phasePalette || {});
+                if (k === 'phasePalette')   props.phasePalette  = JSON.stringify(this._props.phasePalette || {});
+                else if (k === 'fieldMappings') props.fieldMappings = JSON.stringify(this._fieldMappings || {});
+                else if (k === 'filterConfig')  props.filterConfig  = JSON.stringify(this._filterConfig  || {});
+                else if (k === 'showFilters')   props.showFilters   = !!this._showFilters;
                 else props[k] = this._props[k];
             });
             this.dispatchEvent(new CustomEvent('propertiesChanged', {
@@ -548,8 +759,19 @@
         set showAvatars(v) { this._props.showAvatars = !!v; this._swAvatars.classList.toggle('on', !!v); }
         get showAvatars() { return !!this._props.showAvatars; }
 
-        set fieldMappings(v) { this._fieldMappingsRaw = v; this._recomputePhaseValues(); this._renderPhaseRows(); }
-        get fieldMappings() { return this._fieldMappingsRaw || '{}'; }
+        set fieldMappings(v) {
+            this._fieldMappings = safeParse(v, {});
+            this._renderDimensions();
+            this._recomputePhaseValues();
+            this._renderPhaseRows();
+        }
+        get fieldMappings() { return JSON.stringify(this._fieldMappings || {}); }
+
+        set showFilters(v) { this._showFilters = !!v; this._swShowFilters.classList.toggle('on', !!v); }
+        get showFilters() { return !!this._showFilters; }
+
+        set filterConfig(v) { this._filterConfig = safeParse(v, this._filterConfig); this._renderFilterToggles(); }
+        get filterConfig() { return JSON.stringify(this._filterConfig || {}); }
     }
 
     customElements.define('com-planifyit-kanban-styling', KanbanStylingPanel);
