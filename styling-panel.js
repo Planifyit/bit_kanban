@@ -385,7 +385,7 @@
             this._refreshUI();
         }
 
-        set dataBinding(db) {
+        set kanbanDataBinding(db) {
             this._dataBinding = db || null;
             this._extractMeta();
             this._renderDataSourceStats();
@@ -394,7 +394,7 @@
             this._recomputePhaseValues();
             this._renderPhaseRows();
         }
-        get dataBinding() { return this._dataBinding; }
+        get kanbanDataBinding() { return this._dataBinding; }
 
         _extractMeta() {
             const dimMeta = {};
