@@ -54,6 +54,8 @@
                 letter-spacing: .15px;
                 flex-shrink: 0;
             }
+            .widget-header.is-hidden { display: none; }
+            .widget-header .hidden { display: none !important; }
             .widget-header .sap-mark {
                 background: #0a6ed1; color: #fff; font-weight: 700; font-size: 11px;
                 padding: 3px 7px; transform: skewX(-12deg); border-radius: 1px;
@@ -154,6 +156,7 @@
                 letter-spacing: .3px;
                 background: var(--col-color, #2f6db4);
             }
+            .widget.hide-col-head .col-head { display: none; }
             .col-summary {
                 background: var(--col-summary-bg, rgba(47,109,180,0.18));
                 color: var(--col-summary-fg, #1a3a5e);
@@ -162,8 +165,10 @@
                 display: flex; align-items: baseline; gap: 6px;
                 border-bottom: 1px solid var(--sap-border);
             }
+            .widget.hide-col-summary .col-summary { display: none; }
             .col-summary .count { font-size: 16px; font-weight: 700; line-height: 1; }
             .col-summary .label { font-weight: 500; opacity: .95; }
+            .widget.hide-col-unit .col-summary .label { display: none; }
             .col-summary .amount { margin-left: auto; font-size: 11px; opacity: .9; letter-spacing: .2px; }
             .widget.hide-totals .col-summary .amount { display: none; }
 
@@ -198,6 +203,7 @@
             .widget.hide-avatars .card .avatar { display: none; }
             .card .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
             .card .amt { color: var(--sap-text-muted); font-size: 11px; flex-shrink: 0; }
+            .widget.hide-card-amount .card .amt { display: none; }
 
             .widget.density-compact .card { padding: 4px 8px; font-size: 12px; }
             .widget.density-compact .card .avatar { width: 16px; height: 16px; font-size: 9px; }
@@ -214,12 +220,12 @@
         </style>
 
         <div class="widget" id="widget">
-            <div class="widget-header">
-                <div class="sap-mark"><span>SAP</span></div>
-                <span>SAP Analytics Cloud</span>
-                <span class="title-sep">—</span>
+            <div class="widget-header" id="widget-header">
+                <div class="sap-mark" id="sap-mark"><span id="sap-mark-text">SAP</span></div>
+                <span id="subtitle">SAP Analytics Cloud</span>
+                <span class="title-sep" id="title-sep">—</span>
                 <span class="title-text" id="title-text">Vorhaben Übersicht</span>
-                <span class="pill"><span class="dot"></span>Live</span>
+                <span class="pill" id="live-pill"><span class="dot"></span><span id="live-pill-text">Live</span></span>
             </div>
             <div class="filter-bar" id="filter-bar"></div>
             <div class="kanban-wrap">
@@ -231,11 +237,16 @@
     const DEFAULT_PHASE_COLORS = ['#2f6db4', '#2aa39a', '#f0b323', '#e58a3a', '#5b9b46', '#8c95a0'];
     const AVATAR_PALETTE = ['#2f6db4', '#2aa39a', '#e58a3a', '#5b9b46', '#8c4fb8', '#c95a6e'];
 
-    const FILTER_DEFS = [
-        { key: 'ha',   label: 'HA' },
-        { key: 'bu',   label: 'BU' },
-        { key: 'subp', label: 'Phasen' },
-        { key: 'year', label: 'Jahr' }
+    const TEXT_KEYS = [
+        'widgetTitle', 'textSapLabel', 'textSubtitle', 'textSeparator', 'textLivePill',
+        'textColumnUnit', 'textFilterAll', 'textNoData', 'textNoMapping',
+        'filterLabelHa', 'filterLabelBu', 'filterLabelSubp', 'filterLabelYear'
+    ];
+
+    const VISIBILITY_KEYS = [
+        'showHeader', 'showSapMark', 'showSubtitle', 'showSeparator', 'showTitle',
+        'showLivePill', 'showFilters', 'showColumnHeader', 'showColumnSummary',
+        'showColumnUnit', 'showCardAmount', 'showTotals', 'showAvatars'
     ];
 
     function safeParse(value, fallback) {
@@ -291,7 +302,14 @@
             this._shadowRoot.appendChild(tmpl.content.cloneNode(true));
 
             this._widgetEl    = this._shadowRoot.getElementById('widget');
+            this._headerEl    = this._shadowRoot.getElementById('widget-header');
+            this._sapMarkEl   = this._shadowRoot.getElementById('sap-mark');
+            this._sapMarkText = this._shadowRoot.getElementById('sap-mark-text');
+            this._subtitleEl  = this._shadowRoot.getElementById('subtitle');
+            this._titleSepEl  = this._shadowRoot.getElementById('title-sep');
             this._titleEl     = this._shadowRoot.getElementById('title-text');
+            this._livePillEl  = this._shadowRoot.getElementById('live-pill');
+            this._livePillTxt = this._shadowRoot.getElementById('live-pill-text');
             this._filterBar   = this._shadowRoot.getElementById('filter-bar');
             this._kanbanEl    = this._shadowRoot.getElementById('kanban');
 
@@ -315,10 +333,34 @@
                 cardShadow: true,
                 showTotals: true,
                 showAvatars: true,
-                selectedCardId: ''
+                selectedCardId: '',
+                lastClickedCardId: '',
+                textSapLabel: 'SAP',
+                textSubtitle: 'SAP Analytics Cloud',
+                textSeparator: '—',
+                textLivePill: 'Live',
+                textColumnUnit: 'Vorhaben',
+                textFilterAll: 'Alle',
+                textNoData: 'Keine Daten verfügbar. Bitte ein BW-Modell binden.',
+                textNoMapping: 'Bitte im Builder die Felder "Phase" und "Card Title" zuweisen.',
+                filterLabelHa: 'HA',
+                filterLabelBu: 'BU',
+                filterLabelSubp: 'Phasen',
+                filterLabelYear: 'Jahr',
+                showHeader: true,
+                showSapMark: true,
+                showSubtitle: true,
+                showSeparator: true,
+                showTitle: true,
+                showLivePill: true,
+                showColumnHeader: true,
+                showColumnSummary: true,
+                showColumnUnit: true,
+                showCardAmount: true,
+                valueExclusions: {}
             };
 
-            this._activeFilters = { ha: 'Alle', bu: 'Alle', subp: 'Alle', year: 'Alle' };
+            this._activeFilters = { ha: '__all__', bu: '__all__', subp: '__all__', year: '__all__' };
             this._initialized = false;
         }
 
@@ -360,11 +402,17 @@
                 this._props.phasePalette = safeParse(changedProperties.phasePalette, {});
                 stylesChanged = true;
             }
+            if ('valueExclusions' in changedProperties) {
+                this._props.valueExclusions = safeParse(changedProperties.valueExclusions, {});
+                dataChanged = true;
+            }
 
             const scalarKeys = [
                 'showFilters', 'widgetTitle', 'headerBg', 'headerFg', 'fontFamily',
                 'density', 'cornerRadius', 'columnGap', 'cardShadow', 'showTotals',
-                'showAvatars', 'selectedCardId'
+                'showAvatars', 'selectedCardId', 'lastClickedCardId',
+                ...TEXT_KEYS.filter(k => k !== 'widgetTitle'),
+                ...VISIBILITY_KEYS.filter(k => k !== 'showFilters' && k !== 'showTotals' && k !== 'showAvatars')
             ];
             for (const k of scalarKeys) {
                 if (k in changedProperties) {
@@ -390,6 +438,26 @@
             this._widgetEl.classList.toggle('hide-totals', !p.showTotals);
             this._widgetEl.classList.toggle('hide-avatars', !p.showAvatars);
             this._widgetEl.classList.toggle('no-shadow', !p.cardShadow);
+            this._widgetEl.classList.toggle('hide-col-head', !p.showColumnHeader);
+            this._widgetEl.classList.toggle('hide-col-summary', !p.showColumnSummary);
+            this._widgetEl.classList.toggle('hide-col-unit', !p.showColumnUnit);
+            this._widgetEl.classList.toggle('hide-card-amount', !p.showCardAmount);
+        }
+
+        _applyHeaderText() {
+            const p = this._props;
+            this._sapMarkText.textContent = p.textSapLabel || '';
+            this._subtitleEl.textContent  = p.textSubtitle || '';
+            this._titleSepEl.textContent  = p.textSeparator || '';
+            this._titleEl.textContent     = p.widgetTitle || '';
+            this._livePillTxt.textContent = p.textLivePill || '';
+
+            this._headerEl.classList.toggle('is-hidden', !p.showHeader);
+            this._sapMarkEl.classList.toggle('hidden', !p.showSapMark);
+            this._subtitleEl.classList.toggle('hidden', !p.showSubtitle);
+            this._titleSepEl.classList.toggle('hidden', !p.showSeparator);
+            this._titleEl.classList.toggle('hidden', !p.showTitle);
+            this._livePillEl.classList.toggle('hidden', !p.showLivePill);
         }
 
         _updateDataBinding(dataBinding) {
@@ -458,13 +526,34 @@
             return null;
         }
 
-        _uniqueValues(dimKey) {
+        _excludedSet(role) {
+            const ex = this._props.valueExclusions || {};
+            const arr = Array.isArray(ex[role]) ? ex[role] : [];
+            return new Set(arr.map(v => String(v)));
+        }
+
+        _isRowExcluded(row) {
+            const fm = this._props.fieldMappings || {};
+            const ex = this._props.valueExclusions || {};
+            for (const role of Object.keys(ex)) {
+                const dimKey = fm[role];
+                if (!dimKey || !this._dimMeta[dimKey]) continue;
+                const set = new Set((ex[role] || []).map(v => String(v)));
+                if (set.has(String(row[dimKey]))) return true;
+            }
+            return false;
+        }
+
+        _uniqueValues(dimKey, role) {
             const seen = new Set();
             const order = [];
+            const excl = role ? this._excludedSet(role) : null;
             for (const r of this._rows) {
+                if (this._isRowExcluded(r)) continue;
                 const v = r[dimKey];
                 if (v === undefined || v === null || v === '') continue;
                 const s = String(v);
+                if (excl && excl.has(s)) continue;
                 if (!seen.has(s)) { seen.add(s); order.push(s); }
             }
             return order;
@@ -474,9 +563,10 @@
             const fm = this._props.fieldMappings;
             const af = this._activeFilters;
             return this._rows.filter(r => {
-                for (const def of FILTER_DEFS) {
+                if (this._isRowExcluded(r)) return false;
+                for (const def of this._filterDefs()) {
                     const sel = af[def.key];
-                    if (!sel || sel === 'Alle') continue;
+                    if (!sel || sel === '__all__') continue;
                     const dimKey = fm[def.key];
                     if (!dimKey || !this._dimMeta[dimKey]) continue;
                     if (String(r[dimKey]) !== sel) return false;
@@ -485,8 +575,18 @@
             });
         }
 
+        _filterDefs() {
+            const p = this._props;
+            return [
+                { key: 'ha',   label: p.filterLabelHa },
+                { key: 'bu',   label: p.filterLabelBu },
+                { key: 'subp', label: p.filterLabelSubp },
+                { key: 'year', label: p.filterLabelYear }
+            ];
+        }
+
         _renderAll() {
-            this._titleEl.textContent = this._props.widgetTitle || '';
+            this._applyHeaderText();
             this._renderFilterBar();
             this._renderKanban();
         }
@@ -500,9 +600,10 @@
 
             const cfg = this._props.filterConfig || {};
             const fm = this._props.fieldMappings || {};
+            const allLabel = this._props.textFilterAll || 'Alle';
             let any = false;
 
-            for (const def of FILTER_DEFS) {
+            for (const def of this._filterDefs()) {
                 if (!cfg[def.key]) continue;
                 const dimKey = fm[def.key];
                 if (!dimKey || !this._dimMeta[dimKey]) continue;
@@ -518,18 +619,18 @@
 
                 const select = document.createElement('select');
                 const optAll = document.createElement('option');
-                optAll.value = 'Alle';
-                optAll.textContent = 'Alle';
+                optAll.value = '__all__';
+                optAll.textContent = allLabel;
                 select.appendChild(optAll);
 
-                for (const v of this._uniqueValues(dimKey)) {
+                for (const v of this._uniqueValues(dimKey, def.key)) {
                     const opt = document.createElement('option');
                     opt.value = v;
                     opt.textContent = v;
                     select.appendChild(opt);
                 }
 
-                select.value = this._activeFilters[def.key] || 'Alle';
+                select.value = this._activeFilters[def.key] || '__all__';
                 select.addEventListener('change', (e) => {
                     this._activeFilters[def.key] = e.target.value;
                     this._renderKanban();
@@ -553,25 +654,24 @@
             if (!phaseKey || !titleKey) {
                 const empty = document.createElement('div');
                 empty.className = 'empty';
-                if (!this._rows.length) {
-                    empty.textContent = 'Keine Daten verfügbar. Bitte ein BW-Modell binden.';
-                } else {
-                    empty.textContent = 'Bitte im Builder die Felder "Phase" und "Card Title" zuweisen.';
-                }
+                empty.textContent = !this._rows.length
+                    ? (this._props.textNoData || '')
+                    : (this._props.textNoMapping || '');
                 this._kanbanEl.appendChild(empty);
                 this._kanbanEl.style.setProperty('--w-cols', 1);
                 return;
             }
 
-            const rows = this._filteredRows();
-            const phaseValues = this._uniqueValues(phaseKey);
+            const titleExcluded = this._excludedSet('title');
+            const rows = this._filteredRows().filter(r => !titleExcluded.has(String(r[titleKey])));
+            const phaseValues = this._uniqueValues(phaseKey, 'phase');
             this._phaseValues = phaseValues;
 
             const byPhase = new Map();
             phaseValues.forEach(p => byPhase.set(p, []));
             for (const r of rows) {
                 const v = String(r[phaseKey]);
-                if (!byPhase.has(v)) { byPhase.set(v, []); phaseValues.push(v); }
+                if (!byPhase.has(v)) continue;
                 byPhase.get(v).push(r);
             }
 
@@ -600,7 +700,7 @@
                 count.textContent = colCards.length;
                 const lbl = document.createElement('span');
                 lbl.className = 'label';
-                lbl.textContent = 'Vorhaben';
+                lbl.textContent = this._props.textColumnUnit || '';
                 summary.appendChild(count);
                 summary.appendChild(lbl);
 
@@ -651,10 +751,11 @@
 
                     card.addEventListener('click', () => {
                         this._props.selectedCardId = cardId;
+                        this._props.lastClickedCardId = cardId;
                         this._shadowRoot.querySelectorAll('.card.is-selected').forEach(el => el.classList.remove('is-selected'));
                         card.classList.add('is-selected');
                         this.dispatchEvent(new CustomEvent('propertiesChanged', {
-                            detail: { properties: { selectedCardId: cardId } }
+                            detail: { properties: { selectedCardId: cardId, lastClickedCardId: cardId } }
                         }));
                         this.dispatchEvent(new Event('onCardSelected'));
                     });
@@ -667,12 +768,88 @@
             });
         }
 
+        // Scriptable methods
+        getText(key) {
+            if (TEXT_KEYS.indexOf(key) === -1) return '';
+            return this._props[key] || '';
+        }
+        setText(key, value) {
+            if (TEXT_KEYS.indexOf(key) === -1) return;
+            this._props[key] = value == null ? '' : String(value);
+            this._renderAll();
+            this.dispatchEvent(new CustomEvent('propertiesChanged', {
+                detail: { properties: { [key]: this._props[key] } }
+            }));
+        }
+        setVisibility(key, visible) {
+            if (VISIBILITY_KEYS.indexOf(key) === -1) return;
+            this._props[key] = !!visible;
+            this._applyAllStyles();
+            this._renderAll();
+            this.dispatchEvent(new CustomEvent('propertiesChanged', {
+                detail: { properties: { [key]: this._props[key] } }
+            }));
+        }
+        addValueExclusion(role, value) {
+            if (!role) return;
+            const ex = Object.assign({}, this._props.valueExclusions || {});
+            const arr = Array.isArray(ex[role]) ? ex[role].slice() : [];
+            if (arr.indexOf(value) === -1) arr.push(value);
+            ex[role] = arr;
+            this._props.valueExclusions = ex;
+            this._renderAll();
+            this.dispatchEvent(new CustomEvent('propertiesChanged', {
+                detail: { properties: { valueExclusions: JSON.stringify(ex) } }
+            }));
+        }
+        removeValueExclusion(role, value) {
+            const ex = Object.assign({}, this._props.valueExclusions || {});
+            if (!Array.isArray(ex[role])) return;
+            ex[role] = ex[role].filter(v => v !== value);
+            this._props.valueExclusions = ex;
+            this._renderAll();
+            this.dispatchEvent(new CustomEvent('propertiesChanged', {
+                detail: { properties: { valueExclusions: JSON.stringify(ex) } }
+            }));
+        }
+        clearValueExclusions() {
+            this._props.valueExclusions = {};
+            this._renderAll();
+            this.dispatchEvent(new CustomEvent('propertiesChanged', {
+                detail: { properties: { valueExclusions: '{}' } }
+            }));
+        }
+
         get selectedCardId() { return this._props.selectedCardId || ''; }
         set selectedCardId(v) { this._props.selectedCardId = v || ''; }
 
+        get lastClickedCardId() { return this._props.lastClickedCardId || ''; }
+        set lastClickedCardId(v) { this._props.lastClickedCardId = v || ''; }
+
         get fieldMappings() { return JSON.stringify(this._props.fieldMappings || {}); }
         set fieldMappings(v) { this._props.fieldMappings = safeParse(v, {}); }
+
+        get valueExclusions() { return JSON.stringify(this._props.valueExclusions || {}); }
+        set valueExclusions(v) { this._props.valueExclusions = safeParse(v, {}); }
     }
+
+    // generate get/set for each text + visibility prop
+    TEXT_KEYS.forEach(key => {
+        if (key === 'widgetTitle') return;
+        Object.defineProperty(PlanifyITKanban.prototype, key, {
+            get() { return this._props[key] || ''; },
+            set(v) { this._props[key] = v == null ? '' : String(v); },
+            configurable: true
+        });
+    });
+    VISIBILITY_KEYS.forEach(key => {
+        if (['showFilters', 'showTotals', 'showAvatars'].indexOf(key) !== -1) return;
+        Object.defineProperty(PlanifyITKanban.prototype, key, {
+            get() { return !!this._props[key]; },
+            set(v) { this._props[key] = !!v; },
+            configurable: true
+        });
+    });
 
     customElements.define('planifyit-kanban-widget', PlanifyITKanban);
 })();
