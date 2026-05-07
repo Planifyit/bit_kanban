@@ -1001,5 +1001,5 @@
         });
     });
 
-    customElements.define('com-planifyit-kanban-styling', KanbanStylingPanel);
+    customElements.define('com-bit-kanban-styling', KanbanStylingPanel);
 })();
