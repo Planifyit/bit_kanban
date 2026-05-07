@@ -1,27 +1,25 @@
 {
-  "name": "PlanifyIT Kanban",
-  "description": "PlanifyIT Kanban Widget for SAC with live BW model binding (read-only)",
-  "newInstancePrefix": "planifyit_kanban",
+  "name": "BIT Kanban",
+  "description": "BIT Kanban Widget for SAC with live BW model binding (read-only)",
+  "newInstancePrefix": "bit_kanban",
   "eula": "",
-  "vendor": "Planifyit GmbH",
+  "vendor": "BIT",
   "license": "MIT",
-  "id": "planifyit_kanban",
-  "version": "1.1.0",
-  "icon": "https://planifyit.github.io/bit_kanban/PlanifyIT_Logo2.png",
+  "id": "bit_kanban",
+  "version": "1.2.0",
+  "icon": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='10' width='16' height='44' rx='2' fill='%232f6db4'/><rect x='24' y='10' width='16' height='30' rx='2' fill='%232aa39a'/><rect x='44' y='10' width='16' height='38' rx='2' fill='%23f0b323'/></svg>",
   "webcomponents": [
     {
       "kind": "main",
-      "tag": "planifyit-kanban-widget",
+      "tag": "bit-kanban-widget",
       "url": "https://planifyit.github.io/bit_kanban/kanban-widget.js",
-      "integrity": "",
-      "ignoreIntegrity": true
+      "integrity": "sha256-9gB93AxyvkBHctVn33TT3NVFUWqLOpVYLmkxOfKvHl4="
     },
     {
       "kind": "styling",
-      "tag": "com-planifyit-kanban-styling",
+      "tag": "com-bit-kanban-styling",
       "url": "https://planifyit.github.io/bit_kanban/styling-panel.js",
-      "integrity": "",
-      "ignoreIntegrity": true
+      "integrity": "sha256-Gi5yhMZGPuWAz9JoOG7yxtpoj7D5iGtYporJ3UA8b3w="
     }
   ],
   "properties": {
