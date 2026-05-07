@@ -138,6 +138,25 @@
             .info-hint {
                 font-size: 11px; color: var(--sap-text-muted); line-height: 1.4;
             }
+
+            .text-grid { display: grid; grid-template-columns: 130px 1fr; gap: 6px 8px; align-items: center; }
+            .text-grid label { font-size: 12px; color: var(--sap-text-muted); }
+
+            .exclude-entry {
+                display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+            }
+            .exclude-entry .role-select { width: 110px; }
+            .exclude-entry .value-input { flex: 1; }
+            .exclude-entry .remove-btn {
+                background: #ffebee; border: 1px solid #f4c1c5; border-radius: var(--radius-sm);
+                padding: 2px 8px; cursor: pointer; font-size: 13px;
+            }
+            .add-btn {
+                background: #f0f0f0; border: 1px solid var(--sap-border-strong);
+                border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer;
+                font-size: 12px; font-family: inherit; align-self: flex-start;
+            }
+            .add-btn:hover { border-color: var(--sap-blue); color: var(--sap-blue); }
         </style>
 
         <div class="panel-section">
@@ -163,6 +182,32 @@
         </div>
 
         <div class="panel-section">
+            <div class="section-head">Werte ausschließen</div>
+            <div class="section-body">
+                <div class="info-hint">
+                    Schließe bestimmte Werte einer Dimension aus (z.B. "Summe" aus der Phase- oder Card-Title-Spalte). Diese Zeilen werden weder als Karten noch in den Filter-Dropdowns angezeigt.
+                </div>
+                <div id="exclude-list"></div>
+                <button type="button" class="add-btn" id="add-exclude">+ Ausschluss hinzufügen</button>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-head">Sichtbarkeit</div>
+            <div class="section-body" id="visibility-section"></div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-head">Texte</div>
+            <div class="section-body">
+                <div class="info-hint">
+                    Alle Texte sind variabel und können per SAC-Skript via setText("key", "value") überschrieben werden — z.B. für mehrsprachige Dashboards.
+                </div>
+                <div class="text-grid" id="text-grid"></div>
+            </div>
+        </div>
+
+        <div class="panel-section">
             <div class="section-head">Filter</div>
             <div class="section-body">
                 <div class="row">
@@ -176,10 +221,6 @@
         <div class="panel-section">
             <div class="section-head">Allgemein</div>
             <div class="section-body">
-                <div class="field">
-                    <label>Widget-Titel</label>
-                    <input id="in-title" type="text" class="sac-input" placeholder="Titel">
-                </div>
                 <div class="field">
                     <label>Schriftfamilie</label>
                     <div class="select-wrap">
@@ -264,20 +305,6 @@
                 </div>
             </div>
         </div>
-
-        <div class="panel-section">
-            <div class="section-head">Anzeige</div>
-            <div class="section-body">
-                <div class="row">
-                    <label>CHF Summen anzeigen</label>
-                    <div class="sac-switch" id="sw-totals"></div>
-                </div>
-                <div class="row">
-                    <label>Verantwortlichen-Avatare</label>
-                    <div class="sac-switch" id="sw-avatars"></div>
-                </div>
-            </div>
-        </div>
     `;
 
     const HEADER_PRESETS = [
@@ -313,6 +340,37 @@
         { key: 'year', label: 'Jahr' }
     ];
 
+    const TEXT_FIELDS = [
+        { key: 'widgetTitle',     label: 'Widget-Titel' },
+        { key: 'textSapLabel',    label: 'SAP-Logo Text' },
+        { key: 'textSubtitle',    label: 'Untertitel' },
+        { key: 'textSeparator',   label: 'Trennzeichen' },
+        { key: 'textLivePill',    label: 'Live-Pill Text' },
+        { key: 'textColumnUnit',  label: 'Spalten-Einheit' },
+        { key: 'textFilterAll',   label: 'Filter "Alle"' },
+        { key: 'textNoData',      label: 'Text: keine Daten' },
+        { key: 'textNoMapping',   label: 'Text: kein Mapping' },
+        { key: 'filterLabelHa',   label: 'Filter-Label HA' },
+        { key: 'filterLabelBu',   label: 'Filter-Label BU' },
+        { key: 'filterLabelSubp', label: 'Filter-Label Sub-Phase' },
+        { key: 'filterLabelYear', label: 'Filter-Label Jahr' }
+    ];
+
+    const VISIBILITY_FIELDS = [
+        { key: 'showHeader',         label: 'Kopfzeile' },
+        { key: 'showSapMark',        label: 'SAP-Logo' },
+        { key: 'showSubtitle',       label: 'Untertitel (SAP Analytics Cloud)' },
+        { key: 'showSeparator',      label: 'Trennzeichen' },
+        { key: 'showTitle',          label: 'Widget-Titel' },
+        { key: 'showLivePill',       label: 'Live-Pill' },
+        { key: 'showColumnHeader',   label: 'Spaltenkopf (Phasenname)' },
+        { key: 'showColumnSummary',  label: 'Spalten-Zusammenfassung' },
+        { key: 'showColumnUnit',     label: 'Einheits-Label (Vorhaben)' },
+        { key: 'showCardAmount',     label: 'Karten-Betrag' },
+        { key: 'showTotals',         label: 'CHF Summen' },
+        { key: 'showAvatars',        label: 'Verantwortlichen-Avatare' }
+    ];
+
     function safeParse(v, fb) {
         if (v === null || v === undefined) return fb;
         if (typeof v === 'object') return v;
@@ -333,8 +391,11 @@
             this._dimSection = this._shadowRoot.getElementById('dim-section');
             this._filterToggles = this._shadowRoot.getElementById('filter-toggles');
             this._swShowFilters = this._shadowRoot.getElementById('sw-show-filters');
+            this._textGrid = this._shadowRoot.getElementById('text-grid');
+            this._visibilitySection = this._shadowRoot.getElementById('visibility-section');
+            this._excludeList = this._shadowRoot.getElementById('exclude-list');
+            this._addExcludeBtn = this._shadowRoot.getElementById('add-exclude');
 
-            this._inTitle      = this._shadowRoot.getElementById('in-title');
             this._inFont       = this._shadowRoot.getElementById('in-font');
             this._headerPresetsEl = this._shadowRoot.getElementById('header-presets');
             this._inHeaderBg   = this._shadowRoot.getElementById('in-header-bg');
@@ -350,8 +411,6 @@
             this._inGap        = this._shadowRoot.getElementById('in-gap');
             this._inGapV       = this._shadowRoot.getElementById('in-gap-v');
             this._swShadow     = this._shadowRoot.getElementById('sw-shadow');
-            this._swTotals     = this._shadowRoot.getElementById('sw-totals');
-            this._swAvatars    = this._shadowRoot.getElementById('sw-avatars');
 
             this._props = {
                 widgetTitle: 'Vorhaben Übersicht',
@@ -364,7 +423,29 @@
                 columnGap: 10,
                 cardShadow: true,
                 showTotals: true,
-                showAvatars: true
+                showAvatars: true,
+                textSapLabel: 'SAP',
+                textSubtitle: 'SAP Analytics Cloud',
+                textSeparator: '—',
+                textLivePill: 'Live',
+                textColumnUnit: 'Vorhaben',
+                textFilterAll: 'Alle',
+                textNoData: 'Keine Daten verfügbar. Bitte ein BW-Modell binden.',
+                textNoMapping: 'Bitte im Builder die Felder "Phase" und "Card Title" zuweisen.',
+                filterLabelHa: 'HA',
+                filterLabelBu: 'BU',
+                filterLabelSubp: 'Phasen',
+                filterLabelYear: 'Jahr',
+                showHeader: true,
+                showSapMark: true,
+                showSubtitle: true,
+                showSeparator: true,
+                showTitle: true,
+                showLivePill: true,
+                showColumnHeader: true,
+                showColumnSummary: true,
+                showColumnUnit: true,
+                showCardAmount: true
             };
             this._dataBinding = null;
             this._dimMeta = {};
@@ -373,16 +454,23 @@
             this._showFilters = true;
             this._filterConfig = { ha: true, bu: true, subp: true, year: true };
             this._phaseValues = [];
+            this._valueExclusions = {};
 
             this._wireBuilderInputs();
             this._wireStylingInputs();
-
+            this._renderTextFields();
+            this._renderVisibilityToggles();
             this._renderDimensions();
             this._renderFilterToggles();
             this._renderHeaderPresets();
             this._renderPalettePresets();
             this._renderPhaseRows();
+            this._renderExclusions();
             this._refreshUI();
+
+            this._addExcludeBtn.addEventListener('click', () => {
+                this._addExclusionRow('', '');
+            });
         }
 
         set kanbanDataBinding(db) {
@@ -436,6 +524,118 @@
                 this._swShowFilters.classList.toggle('on', this._showFilters);
                 this._dispatch(['showFilters']);
             });
+        }
+
+        _renderTextFields() {
+            this._textGrid.innerHTML = '';
+            TEXT_FIELDS.forEach(f => {
+                const lbl = document.createElement('label');
+                lbl.textContent = f.label;
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.className = 'sac-input';
+                inp.dataset.key = f.key;
+                inp.value = this._props[f.key] || '';
+                inp.addEventListener('input', () => {
+                    this._props[f.key] = inp.value;
+                    this._dispatch([f.key]);
+                });
+                this._textGrid.appendChild(lbl);
+                this._textGrid.appendChild(inp);
+            });
+        }
+
+        _renderVisibilityToggles() {
+            this._visibilitySection.innerHTML = '';
+            VISIBILITY_FIELDS.forEach(f => {
+                const row = document.createElement('div');
+                row.className = 'row';
+                const lbl = document.createElement('label');
+                lbl.textContent = f.label;
+                const sw = document.createElement('div');
+                sw.className = 'sac-switch';
+                if (this._props[f.key]) sw.classList.add('on');
+                sw.dataset.key = f.key;
+                sw.addEventListener('click', () => {
+                    this._props[f.key] = !this._props[f.key];
+                    sw.classList.toggle('on', !!this._props[f.key]);
+                    this._dispatch([f.key]);
+                });
+                row.appendChild(lbl);
+                row.appendChild(sw);
+                this._visibilitySection.appendChild(row);
+            });
+        }
+
+        _renderExclusions() {
+            this._excludeList.innerHTML = '';
+            const ex = this._valueExclusions || {};
+            let any = false;
+            Object.keys(ex).forEach(role => {
+                (ex[role] || []).forEach(val => {
+                    this._addExclusionRow(role, val, true);
+                    any = true;
+                });
+            });
+            if (!any) this._addExclusionRow('', '', true);
+        }
+
+        _addExclusionRow(role, value, skipDispatch) {
+            const entry = document.createElement('div');
+            entry.className = 'exclude-entry';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'select-wrap role-select';
+            const sel = document.createElement('select');
+            sel.className = 'sac-input';
+            const optEmpty = document.createElement('option');
+            optEmpty.value = '';
+            optEmpty.textContent = '— Rolle —';
+            sel.appendChild(optEmpty);
+            ROLES.filter(r => r.kind === 'dim').forEach(r => {
+                const o = document.createElement('option');
+                o.value = r.key;
+                o.textContent = r.label;
+                if (r.key === role) o.selected = true;
+                sel.appendChild(o);
+            });
+            wrap.appendChild(sel);
+
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.className = 'sac-input value-input';
+            inp.placeholder = 'Wert ausschließen (z.B. Summe)';
+            inp.value = value || '';
+
+            const rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'remove-btn';
+            rm.textContent = '✕';
+            rm.addEventListener('click', () => {
+                entry.remove();
+                this._collectExclusionsAndDispatch();
+            });
+
+            sel.addEventListener('change', () => this._collectExclusionsAndDispatch());
+            inp.addEventListener('change', () => this._collectExclusionsAndDispatch());
+
+            entry.appendChild(wrap);
+            entry.appendChild(inp);
+            entry.appendChild(rm);
+            this._excludeList.appendChild(entry);
+        }
+
+        _collectExclusionsAndDispatch() {
+            const out = {};
+            this._excludeList.querySelectorAll('.exclude-entry').forEach(entry => {
+                const role = entry.querySelector('select').value;
+                const val = entry.querySelector('.value-input').value;
+                if (!role || !val) return;
+                if (!out[role]) out[role] = [];
+                if (out[role].indexOf(val) === -1) out[role].push(val);
+            });
+            this._valueExclusions = out;
+            this._dispatch(['valueExclusions']);
         }
 
         _renderDimensions() {
@@ -516,7 +716,6 @@
         }
 
         _wireStylingInputs() {
-            this._inTitle.addEventListener('input', () => { this._props.widgetTitle = this._inTitle.value; this._dispatch(['widgetTitle']); });
             this._inFont.addEventListener('change', () => { this._props.fontFamily = this._inFont.value; this._dispatch(['fontFamily']); });
 
             const syncColor = (txt, pick, key) => {
@@ -547,16 +746,11 @@
                 this._dispatch(['columnGap']);
             });
 
-            const wireSwitch = (el, key) => {
-                el.addEventListener('click', () => {
-                    this._props[key] = !this._props[key];
-                    el.classList.toggle('on', !!this._props[key]);
-                    this._dispatch([key]);
-                });
-            };
-            wireSwitch(this._swShadow, 'cardShadow');
-            wireSwitch(this._swTotals, 'showTotals');
-            wireSwitch(this._swAvatars, 'showAvatars');
+            this._swShadow.addEventListener('click', () => {
+                this._props.cardShadow = !this._props.cardShadow;
+                this._swShadow.classList.toggle('on', !!this._props.cardShadow);
+                this._dispatch(['cardShadow']);
+            });
         }
 
         _renderHeaderPresets() {
@@ -695,8 +889,20 @@
             });
         }
 
+        _refreshTextInputs() {
+            this._textGrid.querySelectorAll('input[data-key]').forEach(inp => {
+                const k = inp.dataset.key;
+                inp.value = this._props[k] || '';
+            });
+        }
+
+        _refreshVisibilityToggles() {
+            this._visibilitySection.querySelectorAll('.sac-switch[data-key]').forEach(sw => {
+                sw.classList.toggle('on', !!this._props[sw.dataset.key]);
+            });
+        }
+
         _refreshUI() {
-            this._inTitle.value = this._props.widgetTitle || '';
             const fontOptions = Array.from(this._inFont.options).map(o => o.value);
             this._inFont.value = fontOptions.includes(this._props.fontFamily) ? this._props.fontFamily : fontOptions[0];
             this._refreshHeaderInputs();
@@ -707,18 +913,19 @@
             this._inGap.value = this._props.columnGap;
             this._inGapV.textContent = this._props.columnGap;
             this._swShadow.classList.toggle('on', !!this._props.cardShadow);
-            this._swTotals.classList.toggle('on', !!this._props.showTotals);
-            this._swAvatars.classList.toggle('on', !!this._props.showAvatars);
             this._swShowFilters.classList.toggle('on', !!this._showFilters);
+            this._refreshTextInputs();
+            this._refreshVisibilityToggles();
         }
 
         _dispatch(keys) {
             const props = {};
             keys.forEach(k => {
-                if (k === 'phasePalette')   props.phasePalette  = JSON.stringify(this._props.phasePalette || {});
-                else if (k === 'fieldMappings') props.fieldMappings = JSON.stringify(this._fieldMappings || {});
-                else if (k === 'filterConfig')  props.filterConfig  = JSON.stringify(this._filterConfig  || {});
-                else if (k === 'showFilters')   props.showFilters   = !!this._showFilters;
+                if (k === 'phasePalette')        props.phasePalette    = JSON.stringify(this._props.phasePalette || {});
+                else if (k === 'fieldMappings')  props.fieldMappings   = JSON.stringify(this._fieldMappings || {});
+                else if (k === 'filterConfig')   props.filterConfig    = JSON.stringify(this._filterConfig  || {});
+                else if (k === 'showFilters')    props.showFilters     = !!this._showFilters;
+                else if (k === 'valueExclusions') props.valueExclusions = JSON.stringify(this._valueExclusions || {});
                 else props[k] = this._props[k];
             });
             this.dispatchEvent(new CustomEvent('propertiesChanged', {
@@ -726,7 +933,7 @@
             }));
         }
 
-        set widgetTitle(v) { this._props.widgetTitle = v || ''; this._inTitle.value = this._props.widgetTitle; }
+        set widgetTitle(v) { this._props.widgetTitle = v || ''; this._refreshTextInputs(); }
         get widgetTitle() { return this._props.widgetTitle || ''; }
 
         set fontFamily(v) { this._props.fontFamily = v || ''; this._refreshUI(); }
@@ -753,10 +960,10 @@
         set cardShadow(v) { this._props.cardShadow = !!v; this._swShadow.classList.toggle('on', !!v); }
         get cardShadow() { return !!this._props.cardShadow; }
 
-        set showTotals(v) { this._props.showTotals = !!v; this._swTotals.classList.toggle('on', !!v); }
+        set showTotals(v) { this._props.showTotals = !!v; this._refreshVisibilityToggles(); }
         get showTotals() { return !!this._props.showTotals; }
 
-        set showAvatars(v) { this._props.showAvatars = !!v; this._swAvatars.classList.toggle('on', !!v); }
+        set showAvatars(v) { this._props.showAvatars = !!v; this._refreshVisibilityToggles(); }
         get showAvatars() { return !!this._props.showAvatars; }
 
         set fieldMappings(v) {
@@ -772,7 +979,27 @@
 
         set filterConfig(v) { this._filterConfig = safeParse(v, this._filterConfig); this._renderFilterToggles(); }
         get filterConfig() { return JSON.stringify(this._filterConfig || {}); }
+
+        set valueExclusions(v) { this._valueExclusions = safeParse(v, {}); this._renderExclusions(); }
+        get valueExclusions() { return JSON.stringify(this._valueExclusions || {}); }
     }
+
+    TEXT_FIELDS.forEach(f => {
+        if (f.key === 'widgetTitle') return;
+        Object.defineProperty(KanbanStylingPanel.prototype, f.key, {
+            get() { return this._props[f.key] || ''; },
+            set(v) { this._props[f.key] = v == null ? '' : String(v); this._refreshTextInputs(); },
+            configurable: true
+        });
+    });
+    VISIBILITY_FIELDS.forEach(f => {
+        if (['showTotals', 'showAvatars'].indexOf(f.key) !== -1) return;
+        Object.defineProperty(KanbanStylingPanel.prototype, f.key, {
+            get() { return !!this._props[f.key]; },
+            set(v) { this._props[f.key] = !!v; this._refreshVisibilityToggles(); },
+            configurable: true
+        });
+    });
 
     customElements.define('com-planifyit-kanban-styling', KanbanStylingPanel);
 })();

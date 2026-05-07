@@ -6,7 +6,7 @@
   "vendor": "Planifyit GmbH",
   "license": "MIT",
   "id": "planifyit_kanban",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "icon": "https://planifyit.github.io/bit_kanban/PlanifyIT_Logo2.png",
   "webcomponents": [
     {
@@ -100,6 +100,126 @@
       "description": "ID of the currently selected card",
       "default": ""
     },
+    "textSapLabel": {
+      "type": "string",
+      "description": "SAP mark label text",
+      "default": "SAP"
+    },
+    "textSubtitle": {
+      "type": "string",
+      "description": "Header subtitle text",
+      "default": "SAP Analytics Cloud"
+    },
+    "textSeparator": {
+      "type": "string",
+      "description": "Header separator character",
+      "default": "—"
+    },
+    "textLivePill": {
+      "type": "string",
+      "description": "Live status pill text",
+      "default": "Live"
+    },
+    "textColumnUnit": {
+      "type": "string",
+      "description": "Label after column count (e.g. 'Vorhaben')",
+      "default": "Vorhaben"
+    },
+    "textFilterAll": {
+      "type": "string",
+      "description": "Label for the 'All' option in filters",
+      "default": "Alle"
+    },
+    "textNoData": {
+      "type": "string",
+      "description": "Message shown when no data is bound",
+      "default": "Keine Daten verfügbar. Bitte ein BW-Modell binden."
+    },
+    "textNoMapping": {
+      "type": "string",
+      "description": "Message shown when required field mappings are missing",
+      "default": "Bitte im Builder die Felder \"Phase\" und \"Card Title\" zuweisen."
+    },
+    "filterLabelHa": {
+      "type": "string",
+      "description": "Label for HA filter",
+      "default": "HA"
+    },
+    "filterLabelBu": {
+      "type": "string",
+      "description": "Label for BU filter",
+      "default": "BU"
+    },
+    "filterLabelSubp": {
+      "type": "string",
+      "description": "Label for Sub-Phase filter",
+      "default": "Phasen"
+    },
+    "filterLabelYear": {
+      "type": "string",
+      "description": "Label for Year filter",
+      "default": "Jahr"
+    },
+    "showHeader": {
+      "type": "boolean",
+      "description": "Show widget header bar",
+      "default": true
+    },
+    "showSapMark": {
+      "type": "boolean",
+      "description": "Show the SAP mark in header",
+      "default": true
+    },
+    "showSubtitle": {
+      "type": "boolean",
+      "description": "Show the subtitle in header",
+      "default": true
+    },
+    "showSeparator": {
+      "type": "boolean",
+      "description": "Show the separator in header",
+      "default": true
+    },
+    "showTitle": {
+      "type": "boolean",
+      "description": "Show the widget title in header",
+      "default": true
+    },
+    "showLivePill": {
+      "type": "boolean",
+      "description": "Show the Live pill in header",
+      "default": true
+    },
+    "showColumnHeader": {
+      "type": "boolean",
+      "description": "Show the colored column header (phase name)",
+      "default": true
+    },
+    "showColumnSummary": {
+      "type": "boolean",
+      "description": "Show the column summary row (count + label)",
+      "default": true
+    },
+    "showColumnUnit": {
+      "type": "boolean",
+      "description": "Show the unit label next to count in column summary",
+      "default": true
+    },
+    "showCardAmount": {
+      "type": "boolean",
+      "description": "Show the per-card amount value",
+      "default": true
+    },
+    "valueExclusions": {
+      "type": "string",
+      "description": "JSON map: role -> array of dimension values to exclude (e.g. {\"phase\":[\"Summe\"],\"title\":[\"Total\"]})",
+      "default": "{}"
+    },
+    "lastClickedCardId": {
+      "type": "string",
+      "description": "ID of the last clicked card",
+      "default": ""
+    },
     "width": {
       "type": "integer",
       "default": 1100
@@ -116,11 +236,74 @@
       "parameters": [],
       "body": "return this.selectedCardId || '';"
     },
+    "getLastClickedCardId": {
+      "returnType": "string",
+      "description": "Get the ID of the last clicked card",
+      "parameters": [],
+      "body": "return this.lastClickedCardId || '';"
+    },
     "getFieldMappings": {
       "returnType": "string",
       "description": "Get the current field mappings as a JSON string",
       "parameters": [],
       "body": "return this.fieldMappings || '{}';"
+    },
+    "getText": {
+      "returnType": "string",
+      "description": "Get the value of a configurable text element by key (e.g. 'widgetTitle','textSapLabel','textSubtitle','textSeparator','textLivePill','textColumnUnit','textFilterAll','textNoData','textNoMapping','filterLabelHa','filterLabelBu','filterLabelSubp','filterLabelYear')",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Text element key" }
+      ]
+    },
+    "setText": {
+      "returnType": "void",
+      "description": "Set the value of a configurable text element by key. Useful for translating labels via SAC scripting.",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Text element key" },
+        { "name": "value", "type": "string", "description": "New text value" }
+      ]
+    },
+    "setVisibility": {
+      "returnType": "void",
+      "description": "Toggle visibility of a UI part (e.g. 'showHeader','showSapMark','showSubtitle','showSeparator','showTitle','showLivePill','showFilters','showColumnHeader','showColumnSummary','showColumnUnit','showCardAmount','showTotals','showAvatars').",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Visibility flag key" },
+        { "name": "visible", "type": "boolean", "description": "true=show, false=hide" }
+      ]
+    },
+    "getValueExclusions": {
+      "returnType": "string",
+      "description": "Get the configured value exclusions as a JSON string",
+      "parameters": [],
+      "body": "return this.valueExclusions || '{}';"
+    },
+    "setValueExclusions": {
+      "description": "Set value exclusions from a JSON string. Format: {\"phase\":[\"Summe\"], \"title\":[\"Total\"]}",
+      "parameters": [
+        { "name": "json", "type": "string", "description": "JSON string of role->values[]" }
+      ],
+      "body": "this.valueExclusions = json;"
+    },
+    "addValueExclusion": {
+      "returnType": "void",
+      "description": "Add a single value to the exclusion list for a given role (e.g. role='phase', value='Summe').",
+      "parameters": [
+        { "name": "role", "type": "string", "description": "Role key (phase/title/owner/ha/bu/subp/year)" },
+        { "name": "value", "type": "string", "description": "Dimension value to exclude" }
+      ]
+    },
+    "removeValueExclusion": {
+      "returnType": "void",
+      "description": "Remove a single value from the exclusion list for a given role.",
+      "parameters": [
+        { "name": "role", "type": "string", "description": "Role key" },
+        { "name": "value", "type": "string", "description": "Value to remove from exclusions" }
+      ]
+    },
+    "clearValueExclusions": {
+      "returnType": "void",
+      "description": "Clear all value exclusions.",
+      "parameters": []
     }
   },
   "events": {
