@@ -295,7 +295,7 @@
         return `CHF ${num.toFixed(1)}`;
     }
 
-    class PlanifyITKanban extends HTMLElement {
+    class BITKanban extends HTMLElement {
         constructor() {
             super();
             this._shadowRoot = this.attachShadow({ mode: 'open' });
@@ -836,7 +836,7 @@
     // generate get/set for each text + visibility prop
     TEXT_KEYS.forEach(key => {
         if (key === 'widgetTitle') return;
-        Object.defineProperty(PlanifyITKanban.prototype, key, {
+        Object.defineProperty(BITKanban.prototype, key, {
             get() { return this._props[key] || ''; },
             set(v) { this._props[key] = v == null ? '' : String(v); },
             configurable: true
@@ -844,12 +844,12 @@
     });
     VISIBILITY_KEYS.forEach(key => {
         if (['showFilters', 'showTotals', 'showAvatars'].indexOf(key) !== -1) return;
-        Object.defineProperty(PlanifyITKanban.prototype, key, {
+        Object.defineProperty(BITKanban.prototype, key, {
             get() { return !!this._props[key]; },
             set(v) { this._props[key] = !!v; },
             configurable: true
         });
     });
 
-    customElements.define('planifyit-kanban-widget', PlanifyITKanban);
+    customElements.define('bit-kanban-widget', BITKanban);
 })();
