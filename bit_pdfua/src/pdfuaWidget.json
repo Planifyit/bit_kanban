@@ -1,0 +1,271 @@
+{
+  "name": "BIT PDF/UA-Korrektur",
+  "description": "BIT PDF/UA-Korrektur for SAC: makes PDF files accessible (PDF/UA-1) and checks them. Runs entirely in the browser, no file leaves the computer.",
+  "newInstancePrefix": "bit_pdfua",
+  "eula": "",
+  "vendor": "BIT",
+  "license": "MIT",
+  "id": "bit_pdfua",
+  "version": "1.0.0",
+  "icon": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M14 4h26l14 14v38a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z' fill='%230b5f8a'/><path d='M40 4v10a4 4 0 0 0 4 4h10z' fill='%2378b6d6'/><path d='M20 38l8 8 16-17' fill='none' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>",
+  "webcomponents": [
+    {
+      "kind": "main",
+      "tag": "bit-pdfua-widget",
+      "url": "/pdfua-widget.js",
+      "integrity": ""
+    },
+    {
+      "kind": "styling",
+      "tag": "com-bit-pdfua-styling",
+      "url": "/pdfua-styling-panel.js",
+      "integrity": ""
+    }
+  ],
+  "properties": {
+    "appTitle": {
+      "type": "string",
+      "description": "Title in the widget header",
+      "default": "PDF/UA-Korrektur"
+    },
+    "appTagline": {
+      "type": "string",
+      "description": "Tagline below the title",
+      "default": "Macht PDF-Dateien automatisch barrierefrei (PDF/UA-1). Alles läuft lokal in Ihrem Browser – keine Datei verlässt Ihren Computer."
+    },
+    "logoText": {
+      "type": "string",
+      "description": "Text in the logo square of the header",
+      "default": "UA"
+    },
+    "showHeader": {
+      "type": "boolean",
+      "description": "Show the header (logo, title, tagline)",
+      "default": true
+    },
+    "showSettings": {
+      "type": "boolean",
+      "description": "Show the settings panel (step 1). When hidden, the story defaults always apply.",
+      "default": true
+    },
+    "showLibrary": {
+      "type": "boolean",
+      "description": "Show the panel with saved alternative texts",
+      "default": true
+    },
+    "showFooter": {
+      "type": "boolean",
+      "description": "Show the footer explaining what is corrected automatically",
+      "default": true
+    },
+    "colorScheme": {
+      "type": "string",
+      "description": "Color scheme: light | dark | auto (follows the operating system)",
+      "default": "light"
+    },
+    "accentColor": {
+      "type": "string",
+      "description": "Accent color (hex) for buttons, logo and step numbers in the light scheme",
+      "default": "#0b5f8a"
+    },
+    "fontFamily": {
+      "type": "string",
+      "description": "Widget font family",
+      "default": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
+    },
+    "contentMaxWidth": {
+      "type": "integer",
+      "description": "Maximum width of the content in px (0 = full widget width)",
+      "default": 1080
+    },
+    "defaultLang": {
+      "type": "string",
+      "description": "Default document language: de-CH | fr-CH | it-CH | rm-CH | en | de-DE | de-AT | fr-FR | it-IT | auto",
+      "default": "de-CH"
+    },
+    "defaultTitleMode": {
+      "type": "string",
+      "description": "Default document title: keep (existing title, else from content) | content (main heading) | filename",
+      "default": "keep"
+    },
+    "defaultLogoAlt": {
+      "type": "string",
+      "description": "Default alternative text for logos",
+      "default": "Logo"
+    },
+    "defaultImgAlt": {
+      "type": "string",
+      "description": "Default alternative text for images",
+      "default": "Abbildung"
+    },
+    "defaultChartAlt": {
+      "type": "string",
+      "description": "Default alternative text for charts",
+      "default": "Diagramm"
+    },
+    "defaultSuffix": {
+      "type": "string",
+      "description": "Suffix added to the file name of corrected PDFs",
+      "default": "_barrierefrei"
+    },
+    "defaultExisting": {
+      "type": "string",
+      "description": "Already tagged PDFs: auto (keep good tags, recreate faulty ones) | retag (always recreate) | keep (always keep, only repair)",
+      "default": "auto"
+    },
+    "defaultBookmarks": {
+      "type": "boolean",
+      "description": "Create bookmarks from headings when none exist",
+      "default": true
+    },
+    "defaultRunning": {
+      "type": "boolean",
+      "description": "Mark recurring headers/footers as artifacts",
+      "default": true
+    },
+    "defaultAutostart": {
+      "type": "boolean",
+      "description": "Process files immediately after adding them",
+      "default": false
+    },
+    "rememberSettings": {
+      "type": "boolean",
+      "description": "Remember settings changed by the user in this browser (local storage)",
+      "default": true
+    },
+    "width": {
+      "type": "integer",
+      "default": 1100
+    },
+    "height": {
+      "type": "integer",
+      "default": 860
+    }
+  },
+  "methods": {
+    "getFileCount": {
+      "returnType": "integer",
+      "description": "Number of files in the list",
+      "parameters": []
+    },
+    "getDoneCount": {
+      "returnType": "integer",
+      "description": "Number of files that were processed successfully",
+      "parameters": []
+    },
+    "getPassedCount": {
+      "returnType": "integer",
+      "description": "Number of processed files that passed the automatic PDF/UA check",
+      "parameters": []
+    },
+    "getSummary": {
+      "returnType": "string",
+      "description": "JSON array with one object per file: file, output, status (ready|queued|running|done|error), pages, rulesBefore, rulesAfter, passed, title, lang, altTextsToReview, messages",
+      "parameters": []
+    },
+    "getLastResult": {
+      "returnType": "string",
+      "description": "JSON object (fields as in getSummary) for the file processed last, or an empty string",
+      "parameters": []
+    },
+    "getLastProcessedFile": {
+      "returnType": "string",
+      "description": "Name of the file processed last, or an empty string",
+      "parameters": []
+    },
+    "startAll": {
+      "returnType": "void",
+      "description": "Start processing all files that are ready",
+      "parameters": []
+    },
+    "rerunAll": {
+      "returnType": "void",
+      "description": "Process all finished files again (ignored while files are being processed)",
+      "parameters": []
+    },
+    "clearAll": {
+      "returnType": "void",
+      "description": "Remove all files from the list (except a file being processed)",
+      "parameters": []
+    },
+    "downloadAll": {
+      "returnType": "void",
+      "description": "Download all corrected PDFs as a ZIP file",
+      "parameters": []
+    },
+    "downloadCsv": {
+      "returnType": "void",
+      "description": "Download the overview of all files as CSV",
+      "parameters": []
+    },
+    "openFilePicker": {
+      "returnType": "void",
+      "description": "Open the file dialog to add PDF files (call it from a click handler, e.g. a button's onClick)",
+      "parameters": []
+    },
+    "openFolderPicker": {
+      "returnType": "void",
+      "description": "Open the folder dialog to add all PDF files of a folder (call it from a click handler)",
+      "parameters": []
+    },
+    "getSetting": {
+      "returnType": "string",
+      "description": "Get the current value of a setting by key: lang, title, logoAlt, imgAlt, chartAlt, suffix, existing, bookmarks, running, autostart (booleans as 'true'/'false')",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Setting key" }
+      ]
+    },
+    "setSetting": {
+      "returnType": "void",
+      "description": "Set a setting by key (see getSetting) for the current user, e.g. setSetting('lang', 'fr-CH')",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Setting key" },
+        { "name": "value", "type": "string", "description": "New value (booleans as 'true'/'false')" }
+      ]
+    },
+    "resetSettings": {
+      "returnType": "void",
+      "description": "Restore the default settings of the widget",
+      "parameters": []
+    },
+    "getEngineMode": {
+      "returnType": "string",
+      "description": "Where PDFs are processed: 'worker' (Web Worker), 'inline' (main thread, e.g. when the Content Security Policy blocks blob: workers) or 'idle' (nothing processed yet)",
+      "parameters": []
+    },
+    "getText": {
+      "returnType": "string",
+      "description": "Get a configurable text by key: appTitle, appTagline, logoText",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Text key" }
+      ]
+    },
+    "setText": {
+      "returnType": "void",
+      "description": "Set a configurable text by key (appTitle, appTagline, logoText)",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Text key" },
+        { "name": "value", "type": "string", "description": "New text" }
+      ]
+    },
+    "setVisibility": {
+      "returnType": "void",
+      "description": "Show or hide a part of the widget: showHeader, showSettings, showLibrary, showFooter",
+      "parameters": [
+        { "name": "key", "type": "string", "description": "Visibility key" },
+        { "name": "visible", "type": "boolean", "description": "true = show, false = hide" }
+      ]
+    }
+  },
+  "events": {
+    "onFilesAdded": {
+      "description": "Fired when PDF files were added to the list."
+    },
+    "onFileProcessed": {
+      "description": "Fired when a file has been processed (successfully or with an error). Use getLastResult() for details."
+    },
+    "onQueueFinished": {
+      "description": "Fired when all queued files have been processed."
+    }
+  }
+}

@@ -1,0 +1,3 @@
+# the manifest pins the SHA-256 of the built files: never convert line endings
+dist/** -text -diff
+src/pdfua-engine.js -text -diff
