@@ -112,6 +112,25 @@
         </div>
 
         <div class="panel-section">
+            <div class="section-head">Sprache der Oberfläche</div>
+            <div class="section-body">
+                <div class="field">
+                    <label>Standardsprache</label>
+                    <div class="select-wrap">
+                        <select id="in-ui-lang" class="sac-input">
+                            <option value="de">Deutsch</option>
+                            <option value="fr">Français</option>
+                            <option value="it">Italiano</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="info-hint">
+                    Nutzer können mit DE/FR/IT umschalten; ihre Wahl wird gemerkt, wenn "Änderungen der Nutzer merken" aktiv ist. Meldungen der Prüfung (Regeltexte) bleiben deutsch.
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
             <div class="section-head">Standard-Einstellungen</div>
             <div class="section-body">
                 <div class="info-hint">
@@ -130,7 +149,7 @@
             <div class="section-head">Texte</div>
             <div class="section-body">
                 <div class="info-hint">
-                    Die Texte können per SAC-Skript via setText("key", "value") überschrieben werden — z.B. für mehrsprachige Dashboards.
+                    Unverändert folgen Titel und Untertitel der Oberflächensprache. Die Texte können auch per SAC-Skript via setText("key", "value") gesetzt werden.
                 </div>
                 <div class="text-grid" id="text-grid"></div>
             </div>
@@ -165,7 +184,7 @@
                     <label>Maximale Inhaltsbreite</label>
                     <div class="slider-row">
                         <input id="in-width" type="range" min="640" max="1680" step="40">
-                        <div class="v" id="in-width-v">1080</div>
+                        <div class="v" id="in-width-v">960</div>
                     </div>
                 </div>
                 <div class="row">
@@ -199,6 +218,8 @@
         appTitle: ['string', 'PDF/UA-Korrektur'],
         appTagline: ['string', 'Macht PDF-Dateien automatisch barrierefrei (PDF/UA-1). Alles läuft lokal in Ihrem Browser – keine Datei verlässt Ihren Computer.'],
         logoText: ['string', 'UA'],
+        uiLanguage: ['string', 'de'],
+        showLanguageSwitch: ['boolean', true],
         showHeader: ['boolean', true],
         showSettings: ['boolean', true],
         showLibrary: ['boolean', true],
@@ -206,7 +227,7 @@
         colorScheme: ['string', 'light'],
         accentColor: ['string', '#0b5f8a'],
         fontFamily: ['string', DEFAULT_FONT],
-        contentMaxWidth: ['integer', 1080],
+        contentMaxWidth: ['integer', 960],
         defaultLang: ['string', 'de-CH'],
         defaultTitleMode: ['string', 'keep'],
         defaultLogoAlt: ['string', 'Logo'],
@@ -235,10 +256,11 @@
     ];
 
     const VISIBILITY_FIELDS = [
-        { key: 'showHeader',   label: 'Kopfzeile (Logo, Titel, Untertitel)' },
-        { key: 'showSettings', label: 'Einstellungen (Schritt 1)' },
-        { key: 'showLibrary',  label: 'Gespeicherte Alternativtexte' },
-        { key: 'showFooter',   label: 'Fusszeile mit Erläuterungen' }
+        { key: 'showHeader',         label: 'Logo und Name in der Kopfleiste' },
+        { key: 'showLanguageSwitch', label: 'Sprachauswahl DE/FR/IT' },
+        { key: 'showSettings',       label: 'Einstellungen (Knopf und Zusammenfassung)' },
+        { key: 'showLibrary',        label: 'Gespeicherte Alternativtexte (in den Einstellungen)' },
+        { key: 'showFooter',         label: '"Über dieses Werkzeug" (in den Einstellungen)' }
     ];
 
     const TEXT_FIELDS = [
@@ -268,13 +290,14 @@
             this._inAccent          = this._shadowRoot.getElementById('in-accent');
             this._inAccentP         = this._shadowRoot.getElementById('in-accent-pick');
             this._inFont            = this._shadowRoot.getElementById('in-font');
+            this._inUiLang          = this._shadowRoot.getElementById('in-ui-lang');
             this._inWidth           = this._shadowRoot.getElementById('in-width');
             this._inWidthV          = this._shadowRoot.getElementById('in-width-v');
             this._swFullWidth       = this._shadowRoot.getElementById('sw-full-width');
 
             this._props = {};
             Object.keys(PROPS).forEach(k => { this._props[k] = PROPS[k][1]; });
-            this._lastWidth = 1080;
+            this._lastWidth = 960;
 
             this._renderDefaults();
             this._renderVisibilityToggles();
@@ -426,6 +449,11 @@
                 }
             });
 
+            this._inUiLang.addEventListener('change', () => {
+                this._props.uiLanguage = this._inUiLang.value;
+                this._dispatch(['uiLanguage']);
+            });
+
             this._inFont.addEventListener('change', () => {
                 this._props.fontFamily = this._inFont.value;
                 this._dispatch(['fontFamily']);
@@ -438,7 +466,7 @@
                 this._dispatch(['contentMaxWidth']);
             });
             this._swFullWidth.addEventListener('click', () => {
-                this._props.contentMaxWidth = this._props.contentMaxWidth > 0 ? 0 : (this._lastWidth || 1080);
+                this._props.contentMaxWidth = this._props.contentMaxWidth > 0 ? 0 : (this._lastWidth || 960);
                 this._refreshWidth();
                 this._dispatch(['contentMaxWidth']);
             });
@@ -497,6 +525,7 @@
             else if (key === 'accentColor') this._refreshAccent();
             else if (key === 'fontFamily') this._refreshFont();
             else if (key === 'contentMaxWidth') this._refreshWidth();
+            else if (key === 'uiLanguage') this._inUiLang.value = ['de', 'fr', 'it'].indexOf(this._props.uiLanguage) !== -1 ? this._props.uiLanguage : 'de';
         }
 
         _refreshUI() {

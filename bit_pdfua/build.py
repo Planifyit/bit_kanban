@@ -7,10 +7,10 @@
                                           # version of the stand-alone program, then build
 
 Output (dist/):
-    pdfua-widget.js           main web component (UI + engine)
+    pdfua-widget.js           main web component (interface, texts, styles and engine)
     pdfua-styling-panel.js    styling panel web component
     pdfuaWidget.json          widget manifest with relative URLs and SRI hashes
-    BIT_pdfua_1.zip           flat ZIP (JSON + JS files) for upload into SAC
+    BIT_pdfua_<major>.zip     flat ZIP (JSON + JS files) for upload into SAC
 
 Only the Python standard library is used.
 """
@@ -29,15 +29,18 @@ DIST = HERE / 'dist'
 
 ENGINE_FILE = SRC / 'pdfua-engine.js'
 WIDGET_SRC = SRC / 'pdfua-widget.src.js'
+I18N_SRC = SRC / 'pdfua-i18n.js'
+CSS_SRC = SRC / 'pdfua-widget.css'
 STYLING_SRC = SRC / 'pdfua-styling-panel.js'
 MANIFEST_SRC = SRC / 'pdfuaWidget.json'
 
 WIDGET_OUT = 'pdfua-widget.js'
 STYLING_OUT = 'pdfua-styling-panel.js'
 MANIFEST_OUT = 'pdfuaWidget.json'
-ZIP_OUT = 'BIT_pdfua_1.zip'
 
 ENGINE_PLACEHOLDER = '/* @@PDFUA_ENGINE@@ */'
+I18N_PLACEHOLDER = '/* @@PDFUA_I18N@@ */'
+CSS_PLACEHOLDER = '/* @@PDFUA_CSS@@ */'
 
 # pdf-lib's UMD header. SAC runs on a page with an AMD loader, so a UMD bundle can
 # end up registered as an anonymous AMD module instead of creating its global. The
@@ -85,18 +88,28 @@ def sri(data):
     return 'sha256-' + base64.b64encode(hashlib.sha256(data).digest()).decode('ascii')
 
 
+def insert(text, placeholder, part):
+    if text.count(placeholder) != 1:
+        sys.exit(placeholder + ' not found exactly once in ' + WIDGET_SRC.name)
+    return text.replace(placeholder, part)
+
+
 def build():
-    engine = read_text(ENGINE_FILE)
-    widget_src = read_text(WIDGET_SRC)
-    if widget_src.count(ENGINE_PLACEHOLDER) != 1:
-        sys.exit('engine placeholder not found exactly once in ' + WIDGET_SRC.name)
-    widget = widget_src.replace(ENGINE_PLACEHOLDER, wrap_engine(engine))
+    css = read_text(CSS_SRC).strip('\n')
+    # the stylesheet goes into a template literal
+    if any(x in css for x in ('`', '${', '</style')):
+        sys.exit(CSS_SRC.name + ' must not contain backticks, "${" or "</style"')
+    widget = read_text(WIDGET_SRC)
+    widget = insert(widget, CSS_PLACEHOLDER, css)
+    widget = insert(widget, I18N_PLACEHOLDER, read_text(I18N_SRC).rstrip('\n'))
+    widget = insert(widget, ENGINE_PLACEHOLDER, wrap_engine(read_text(ENGINE_FILE)))
     styling = read_text(STYLING_SRC)
 
     widget_bytes = widget.encode('utf-8')
     styling_bytes = styling.encode('utf-8')
 
     manifest = json.loads(read_text(MANIFEST_SRC))
+    zip_out = 'BIT_pdfua_' + manifest['version'].split('.')[0] + '.zip'
     hashes = {WIDGET_OUT: sri(widget_bytes), STYLING_OUT: sri(styling_bytes)}
     for wc in manifest['webcomponents']:
         name = wc['url'].lstrip('/')
@@ -111,7 +124,7 @@ def build():
         (DIST / name).write_bytes(data)
 
     # SAC accepts no subfolders in the ZIP: all files go to the root
-    with zipfile.ZipFile(DIST / ZIP_OUT, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    with zipfile.ZipFile(DIST / zip_out, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for name, data in outputs:
             info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -120,7 +133,7 @@ def build():
 
     for name, data in outputs:
         print('%-26s %9d bytes  %s' % (name, len(data), hashes.get(name, '')))
-    print('%-26s %9d bytes' % (ZIP_OUT, (DIST / ZIP_OUT).stat().st_size))
+    print('%-26s %9d bytes' % (zip_out, (DIST / zip_out).stat().st_size))
 
 
 def main():

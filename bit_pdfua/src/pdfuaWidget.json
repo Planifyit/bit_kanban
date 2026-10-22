@@ -1,12 +1,12 @@
 {
   "name": "BIT PDF/UA-Korrektur",
-  "description": "BIT PDF/UA-Korrektur for SAC: makes PDF files accessible (PDF/UA-1) and checks them. Runs entirely in the browser, no file leaves the computer.",
+  "description": "BIT PDF/UA-Korrektur for SAC: makes PDF files accessible (PDF/UA-1) and checks them in three steps (upload, review, download), in German, French and Italian. Runs entirely in the browser, no file leaves the computer.",
   "newInstancePrefix": "bit_pdfua",
   "eula": "",
   "vendor": "BIT",
   "license": "MIT",
   "id": "bit_pdfua",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "icon": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M14 4h26l14 14v38a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z' fill='%230b5f8a'/><path d='M40 4v10a4 4 0 0 0 4 4h10z' fill='%2378b6d6'/><path d='M20 38l8 8 16-17' fill='none' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>",
   "webcomponents": [
     {
@@ -25,37 +25,47 @@
   "properties": {
     "appTitle": {
       "type": "string",
-      "description": "Title in the widget header",
+      "description": "Tool name in the top bar (left at the default, it follows the interface language)",
       "default": "PDF/UA-Korrektur"
     },
     "appTagline": {
       "type": "string",
-      "description": "Tagline below the title",
+      "description": "Line below the heading of step 1 (left at the default, it follows the interface language)",
       "default": "Macht PDF-Dateien automatisch barrierefrei (PDF/UA-1). Alles läuft lokal in Ihrem Browser – keine Datei verlässt Ihren Computer."
     },
     "logoText": {
       "type": "string",
-      "description": "Text in the logo square of the header",
+      "description": "Text in the logo square of the top bar",
       "default": "UA"
+    },
+    "uiLanguage": {
+      "type": "string",
+      "description": "Default interface language: de | fr | it. Users can switch; their choice is remembered if rememberSettings is on.",
+      "default": "de"
+    },
+    "showLanguageSwitch": {
+      "type": "boolean",
+      "description": "Show the DE/FR/IT switch in the top bar",
+      "default": true
     },
     "showHeader": {
       "type": "boolean",
-      "description": "Show the header (logo, title, tagline)",
+      "description": "Show logo and tool name in the top bar",
       "default": true
     },
     "showSettings": {
       "type": "boolean",
-      "description": "Show the settings panel (step 1). When hidden, the story defaults always apply.",
+      "description": "Show the settings button and the settings summary. When hidden, the story defaults always apply.",
       "default": true
     },
     "showLibrary": {
       "type": "boolean",
-      "description": "Show the panel with saved alternative texts",
+      "description": "Show the saved alternative texts in the settings drawer",
       "default": true
     },
     "showFooter": {
       "type": "boolean",
-      "description": "Show the footer explaining what is corrected automatically",
+      "description": "Show \"Über dieses Werkzeug\" (what is corrected automatically) in the settings drawer",
       "default": true
     },
     "colorScheme": {
@@ -65,7 +75,7 @@
     },
     "accentColor": {
       "type": "string",
-      "description": "Accent color (hex) for buttons, logo and step numbers in the light scheme",
+      "description": "Accent color (hex) for the light scheme; light colors are darkened to keep AA contrast",
       "default": "#0b5f8a"
     },
     "fontFamily": {
@@ -76,7 +86,7 @@
     "contentMaxWidth": {
       "type": "integer",
       "description": "Maximum width of the content in px (0 = full widget width)",
-      "default": 1080
+      "default": 960
     },
     "defaultLang": {
       "type": "string",
@@ -139,7 +149,7 @@
     },
     "height": {
       "type": "integer",
-      "default": 860
+      "default": 760
     }
   },
   "methods": {
@@ -160,7 +170,7 @@
     },
     "getSummary": {
       "returnType": "string",
-      "description": "JSON array with one object per file: file, output, status (ready|queued|running|done|error), pages, rulesBefore, rulesAfter, passed, title, lang, altTextsToReview, messages",
+      "description": "JSON array with one object per file: file, output, status (ready|queued|running|done|error), verdict (ok|hints|error), pages, rulesBefore, rulesAfter, passed, title, lang, altTextsToReview, messages",
       "parameters": []
     },
     "getLastResult": {
@@ -175,7 +185,7 @@
     },
     "startAll": {
       "returnType": "void",
-      "description": "Start processing all files that are ready",
+      "description": "Correct all files that are ready (like the button \"Korrigieren\")",
       "parameters": []
     },
     "rerunAll": {
@@ -212,15 +222,27 @@
       "returnType": "string",
       "description": "Get the current value of a setting by key: lang, title, logoAlt, imgAlt, chartAlt, suffix, existing, bookmarks, running, autostart (booleans as 'true'/'false')",
       "parameters": [
-        { "name": "key", "type": "string", "description": "Setting key" }
+        {
+          "name": "key",
+          "type": "string",
+          "description": "Setting key"
+        }
       ]
     },
     "setSetting": {
       "returnType": "void",
       "description": "Set a setting by key (see getSetting) for the current user, e.g. setSetting('lang', 'fr-CH')",
       "parameters": [
-        { "name": "key", "type": "string", "description": "Setting key" },
-        { "name": "value", "type": "string", "description": "New value (booleans as 'true'/'false')" }
+        {
+          "name": "key",
+          "type": "string",
+          "description": "Setting key"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "New value (booleans as 'true'/'false')"
+        }
       ]
     },
     "resetSettings": {
@@ -237,23 +259,75 @@
       "returnType": "string",
       "description": "Get a configurable text by key: appTitle, appTagline, logoText",
       "parameters": [
-        { "name": "key", "type": "string", "description": "Text key" }
+        {
+          "name": "key",
+          "type": "string",
+          "description": "Text key"
+        }
       ]
     },
     "setText": {
       "returnType": "void",
       "description": "Set a configurable text by key (appTitle, appTagline, logoText)",
       "parameters": [
-        { "name": "key", "type": "string", "description": "Text key" },
-        { "name": "value", "type": "string", "description": "New text" }
+        {
+          "name": "key",
+          "type": "string",
+          "description": "Text key"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "New text"
+        }
       ]
     },
     "setVisibility": {
       "returnType": "void",
-      "description": "Show or hide a part of the widget: showHeader, showSettings, showLibrary, showFooter",
+      "description": "Show or hide a part of the widget: showHeader, showSettings, showLibrary, showFooter, showLanguageSwitch",
       "parameters": [
-        { "name": "key", "type": "string", "description": "Visibility key" },
-        { "name": "visible", "type": "boolean", "description": "true = show, false = hide" }
+        {
+          "name": "key",
+          "type": "string",
+          "description": "Visibility key"
+        },
+        {
+          "name": "visible",
+          "type": "boolean",
+          "description": "true = show, false = hide"
+        }
+      ]
+    },
+    "getUiLanguage": {
+      "returnType": "string",
+      "description": "Current interface language: de, fr or it",
+      "parameters": []
+    },
+    "setUiLanguage": {
+      "returnType": "void",
+      "description": "Switch the interface language: de, fr or it",
+      "parameters": [
+        {
+          "name": "language",
+          "type": "string",
+          "description": "de, fr or it"
+        }
+      ]
+    },
+    "getStep": {
+      "returnType": "integer",
+      "description": "Step shown: 1 Hochladen, 2 Prüfen, 3 Herunterladen",
+      "parameters": []
+    },
+    "goToStep": {
+      "returnType": "void",
+      "description": "Show a step (1, 2 or 3) if it is available",
+      "parameters": [
+        {
+          "name": "step",
+          "type": "integer",
+          "description": "1, 2 or 3"
+        }
       ]
     }
   },
@@ -266,6 +340,9 @@
     },
     "onQueueFinished": {
       "description": "Fired when all queued files have been processed."
+    },
+    "onStepChanged": {
+      "description": "Fired when another step is shown. Use getStep() to read it."
     }
   }
 }

@@ -1,8 +1,9 @@
 /* BIT PDF/UA-Korrektur – SAP Analytics Cloud custom widget (main web component).
- * Port of the stand-alone program PDF-UA-Korrektur.html. build.py inserts the PDF/UA engine
- * (pdf-lib, fonts and the remediation/check modules) as the function PDFUA_ENGINE below. The
- * engine runs in a Web Worker; if the tenant's Content Security Policy blocks blob: workers it
- * runs on the main thread instead. No eval, no inline <script>, no global variables. */
+ * Interface in three steps (Hochladen · Prüfen · Herunterladen) around the engine of the stand-alone
+ * program PDF-UA-Korrektur.html. build.py inserts the engine (pdf-lib, fonts and the remediation/check
+ * modules) as the function PDFUA_ENGINE below, the interface texts (de/fr/it) and the stylesheet. The
+ * engine runs in a Web Worker; if the tenant's Content Security Policy blocks blob: workers it runs on
+ * the main thread instead. No eval, no inline <script>, no global variables. */
 (function () {
     function PDFUA_ENGINE(globalThis) {
 !function(t,e){e(t.PDFLib={})}(globalThis,(function(t){"use strict";
@@ -7021,15 +7022,539 @@ globalThis.PDFUA_FONTS = {"Caladea-Bold":"AAEAAAAOAIAAAwBgR0RFRg6PDukAAIfsAAAAvk
     (function () {
         'use strict';
 
-        const LANGS = [['de-CH', 'Deutsch (Schweiz)'], ['fr-CH', 'Französisch (Schweiz)'], ['it-CH', 'Italienisch (Schweiz)'], ['rm-CH', 'Rätoromanisch'], ['en', 'Englisch'], ['de-DE', 'Deutsch (Deutschland)'], ['de-AT', 'Deutsch (Österreich)'], ['fr-FR', 'Französisch (Frankreich)'], ['it-IT', 'Italienisch (Italien)'], ['auto', 'Automatisch erkennen']];
+        // Interface texts. Messages from the engine (corrections, notes, rule texts) are German only.
+        const I18N = {};
+        const plural = (n, one, many) => (n === 1 ? one : many).replace('{n}', n);
+
+        I18N.de = {
+            locale: 'de-CH',
+            appTitle: 'PDF/UA-Korrektur',
+            appTagline: 'Macht PDF-Dateien automatisch barrierefrei (PDF/UA-1). Alles läuft lokal in Ihrem Browser – keine Datei verlässt Ihren Computer.',
+            langs: { 'de-CH': 'Deutsch (Schweiz)', 'fr-CH': 'Französisch (Schweiz)', 'it-CH': 'Italienisch (Schweiz)', 'rm-CH': 'Rätoromanisch', en: 'Englisch', 'de-DE': 'Deutsch (Deutschland)', 'de-AT': 'Deutsch (Österreich)', 'fr-FR': 'Französisch (Frankreich)', 'it-IT': 'Italienisch (Italien)', auto: 'Automatisch erkennen' },
+            uiLangs: { de: 'Deutsch', fr: 'Französisch', it: 'Italienisch' },
+
+            // top bar
+            stepsNav: 'Schritte',
+            step1: 'Hochladen', step2: 'Prüfen', step3: 'Herunterladen',
+            stepDoneSr: '(erledigt)',
+            uiLangGroup: 'Sprache der Oberfläche',
+            settings: 'Einstellungen',
+
+            // step 1
+            s1Title: 'PDF-Dateien hinzufügen',
+            dropTitle: 'PDF-Dateien hierher ziehen',
+            pickFiles: 'Dateien auswählen …',
+            pickFolder: 'Ordner auswählen …',
+            dropHint: 'Eine Datei, mehrere Dateien oder ein ganzer Ordner.',
+            filesHeading: (n) => 'Dateien (' + n + ')',
+            clearList: 'Liste leeren',
+            noFiles: 'Noch keine Dateien. Ziehen Sie PDFs in das Feld oben oder wählen Sie sie aus.',
+            customize: 'Anpassen',
+            customizeFor: (name) => name + ' anpassen',
+            remove: 'Entfernen',
+            removeFor: (name) => name + ' entfernen',
+            ovNote: 'Optional – leer lassen, um die Einstellungen zu verwenden.',
+            ovTitle: 'Titel',
+            ovLang: 'Sprache',
+            ovLogo: 'Alternativtext für Logos',
+            ovLangDefault: (name) => 'wie Einstellungen (' + name + ')',
+            titlePh: { keep: 'vorhandener Titel oder aus dem Inhalt', content: 'automatisch aus dem Inhalt', filename: 'aus dem Dateinamen' },
+            status: { ready: 'Bereit', queued: 'Wartet', running: 'In Arbeit …', done: 'Fertig', error: 'Fehler' },
+            summaryLabel: 'Einstellungen',
+            summaryChange: 'Ändern',
+            sumTitle: { keep: 'Titel: vorhanden oder aus dem Inhalt', content: 'Titel: aus dem Inhalt', filename: 'Titel: aus dem Dateinamen' },
+            sumExisting: { auto: 'Tags: automatisch', retag: 'Tags: neu erstellen', keep: 'Tags: behalten' },
+            sumBookmarks: 'Lesezeichen',
+            sumRunning: 'Kopf-/Fusszeilen als Artefakt',
+            sumAutostart: 'Sofortstart',
+            sumSuffix: (s) => 'Dateiname + „' + s + '“',
+            correct: 'Korrigieren',
+            correctN: (n) => 'Korrigieren (' + n + ')',
+
+            // step 2
+            s2TitleRun: 'Dateien werden korrigiert',
+            s2RunNote: 'Die Dateien werden nacheinander verarbeitet.',
+            s2TitleReview: 'Alternativtexte prüfen',
+            stages: { Start: 'Wird gelesen …', Analyse: 'Inhalt wird analysiert …', Layout: 'Struktur wird erkannt …', Tags: 'Tags werden geschrieben …', Schriften: 'Schriften werden repariert …', Speichern: 'Wird gespeichert …', 'Prüfung': 'PDF/UA-Prüfung …', Fertig: 'Fertig' },
+            waiting: 'Wartet …',
+            progressFor: (name) => 'Fortschritt ' + name,
+            reviewIntro: (n) => plural(n, '1 Abbildung braucht Ihre Prüfung.', '{n} Abbildungen brauchen Ihre Prüfung.'),
+            reviewNone: 'Keine Abbildung braucht eine Prüfung.',
+            reviewHelp: 'Beschreiben Sie, was das Bild aussagt. Die Eingabetaste übernimmt den Text und springt zum nächsten Bild. Übernommene Texte werden gespeichert und bei künftigen Dateien mit demselben Bild automatisch verwendet.',
+            reviewCount: (a, n) => a + ' von ' + n + ' übernommen',
+            acceptAll: 'Alle übernehmen',
+            accept: 'Übernehmen',
+            acceptFor: (i) => 'Alternativtext ' + i + ' übernehmen',
+            accepted: 'Übernommen',
+            altLabel: (i, n) => 'Alternativtext für Abbildung ' + i + ' von ' + n,
+            decorative: 'Dekorativ (kein Alternativtext)',
+            needText: 'Bitte einen Text eingeben oder „Dekorativ“ wählen.',
+            suggestions: 'Vorschläge aus Ihren gespeicherten Texten:',
+            useSuggestion: (s) => 'Vorschlag verwenden: ' + s,
+            source: { default: 'Automatischer Vorschlag', logo: 'Automatischer Vorschlag (Logo)', settings: 'Aus den Einstellungen', caption: 'Aus der Bildunterschrift', formula: 'Automatisch gelesen (Formel)', tags: 'Aus vorhandenen Tags', library: 'Aus Ihren gespeicherten Texten' },
+            figKind: { image: 'Bild', vector: 'Vektorgrafik / Diagramm', formula: 'Formel' },
+            pagesShort: (pages) => (pages.length === 1 ? 'Seite ' : 'Seiten ') + pages.join(', '),
+            showAllFigures: (n) => 'Auch Abbildungen ohne Prüfbedarf anzeigen (' + n + ')',
+            continueApply: 'Übernehmen und weiter',
+            continueOnly: 'Weiter',
+            applying: 'Die übernommenen Texte werden eingesetzt …',
+
+            // step 3
+            s3Title: 'Ergebnisse',
+            s3Summary: (n, ok, hints, errors) => [plural(n, '1 Datei', '{n} Dateien'), ok ? ok + ' PDF/UA erfüllt' : '', hints ? hints + ' mit Hinweisen' : '', errors ? plural(errors, '1 Fehler', '{n} Fehler') : ''].filter(Boolean).join(' · '),
+            downloadAll: 'Alle herunterladen (ZIP)',
+            csv: 'Übersicht (CSV)',
+            rerunAll: 'Erneut verarbeiten',
+            addMore: 'Weitere Dateien hinzufügen',
+            stOk: 'PDF/UA erfüllt', stHints: 'Hinweise', stError: 'Fehler',
+            hintRules: (n) => plural(n, '1 Regel offen', '{n} Regeln offen'),
+            hintAlt: (n) => plural(n, '1 Alternativtext nicht geprüft', '{n} Alternativtexte nicht geprüft'),
+            hintOcr: 'Texterkennung (OCR) nötig',
+            hintLimited: 'Mit Einschränkungen',
+            download: 'Herunterladen',
+            downloadFor: (name) => name + ' herunterladen',
+            showDetails: 'Details anzeigen',
+            hideDetails: 'Details ausblenden',
+            pages: (n) => plural(n, '1 Seite', '{n} Seiten'),
+            boxTitle: 'Titel', boxLang: 'Sprache', boxCheck: 'Automatische PDF/UA-Prüfung', boxStruct: 'Erkannte Struktur',
+            beforeAfter: (b, a, total) => (b !== null ? 'vorher ' + b + '/' + total + ' → ' : '') + 'nachher ' + a + '/' + total + ' Regeln erfüllt',
+            struct: { tags: (n) => n + ' Tags', tables: (n) => plural(n, '1 Tabelle', '{n} Tabellen'), lists: (n) => plural(n, '1 Liste', '{n} Listen'), figures: (n) => plural(n, '1 Abbildung', '{n} Abbildungen'), formulas: (n) => plural(n, '1 Formel', '{n} Formeln'), notes: (n) => plural(n, '1 Fussnote', '{n} Fussnoten') },
+            outlineTitle: (n, more) => 'Erkannte Struktur in Lesereihenfolge (' + n + (more ? '+' : '') + ' Elemente)',
+            outlineTypes: { H1: 'Überschrift 1', H2: 'Überschrift 2', H3: 'Überschrift 3', H4: 'Überschrift 4', H5: 'Überschrift 5', H6: 'Überschrift 6', P: 'Absatz', Table: 'Tabelle', L: 'Liste', Figure: 'Abbildung', Formula: 'Formel', Note: 'Fussnote', Link: 'Link', Form: 'Formularfeld', Annot: 'Anmerkung' },
+            pageShort: (p) => 'S. ' + p,
+            fixesTitle: 'Durchgeführte Korrekturen',
+            warningsTitle: 'Hinweise',
+            errorsTitle: 'Fehler',
+            logTitle: (ok, total) => 'Prüfprotokoll (' + ok + '/' + total + ' Regeln erfüllt)',
+            onlyFailed: 'Nur nicht erfüllte Regeln',
+            colRule: 'Regel', colReq: 'Anforderung', colResult: 'Ergebnis',
+            ruleOk: 'erfüllt', ruleFail: 'nicht erfüllt',
+            allRulesOk: 'Alle Regeln sind erfüllt.',
+            figuresTitle: (n) => 'Abbildungen und Alternativtexte (' + n + ')',
+            editInReview: 'Im Schritt „Prüfen“ bearbeiten',
+            decorativeShort: 'dekorativ',
+            adjustTitle: 'Titel, Sprache und Logo-Text anpassen',
+            rerunFile: 'Erneut verarbeiten',
+            report: 'Prüfbericht (HTML)',
+            engineGerman: '',
+            unknownError: 'Unbekannter Fehler',
+            engineStartError: (m) => 'Die Verarbeitung konnte nicht gestartet werden: ' + m,
+
+            // announcements
+            annAdded: (n) => plural(n, '1 Datei hinzugefügt.', '{n} Dateien hinzugefügt.'),
+            annNoPdf: 'Keine PDF-Dateien gefunden.',
+            annStart: (n) => plural(n, '1 Datei wird korrigiert.', '{n} Dateien werden korrigiert.'),
+            annFileOk: (name) => name + ': fertig, PDF/UA-Prüfung bestanden.',
+            annFileOpen: (name) => name + ': fertig, mit offenen Punkten.',
+            annFileError: (name) => name + ': Fehler bei der Verarbeitung.',
+            annReview: (n) => plural(n, 'Verarbeitung fertig. 1 Abbildung braucht Ihre Prüfung.', 'Verarbeitung fertig. {n} Abbildungen brauchen Ihre Prüfung.'),
+            annDone: (n) => plural(n, 'Fertig. 1 Datei ist bereit zum Herunterladen.', 'Fertig. {n} Dateien sind bereit zum Herunterladen.'),
+            annStep: (i, name) => 'Schritt ' + i + ': ' + name,
+            annReset: 'Standardeinstellungen wiederhergestellt.',
+            annLang: 'Sprache: Deutsch',
+
+            // settings drawer
+            drawerTitle: 'Einstellungen',
+            drawerNote: 'Gelten für alle Dateien und bleiben in diesem Browser gespeichert. Pro Datei lässt sich alles vor dem Start überschreiben.',
+            drawerNoteSession: 'Gelten für alle Dateien. Pro Datei lässt sich alles vor dem Start überschreiben.',
+            close: 'Schliessen',
+            grpDocument: 'Dokument', grpAlt: 'Alternativtexte', grpProcessing: 'Verarbeitung', grpLibrary: 'Gespeicherte Alternativtexte', grpAbout: 'Über dieses Werkzeug',
+            optLang: 'Dokumentsprache',
+            optTitle: 'Dokumenttitel',
+            titleModes: { keep: 'Vorhandenen Titel behalten, sonst aus dem Inhalt', content: 'Immer aus dem Inhalt (Hauptüberschrift)', filename: 'Aus dem Dateinamen' },
+            optLogoAlt: 'Alternativtext für Logos',
+            optImgAlt: 'Alternativtext für Bilder',
+            optChartAlt: 'Alternativtext für Diagramme',
+            optSuffix: 'Zusatz im Dateinamen',
+            optExisting: 'Bereits getaggte PDFs',
+            existingModes: { auto: 'Automatisch: gute Tags behalten, fehlerhafte neu erstellen', retag: 'Tags immer neu erstellen', keep: 'Vorhandene Tags immer behalten (nur reparieren)' },
+            optBookmarks: 'Lesezeichen aus Überschriften erstellen (wenn keine vorhanden)',
+            optRunning: 'Wiederkehrende Kopf-/Fusszeilen als Artefakt markieren',
+            optAutostart: 'Dateien sofort nach dem Hinzufügen korrigieren',
+            resetSettings: 'Standardeinstellungen wiederherstellen',
+            done: 'Fertig',
+            libCount: (n) => '(' + n + ')',
+            libEmpty: 'Noch keine gespeicherten Alternativtexte. Sie entstehen, wenn Sie im Schritt „Prüfen“ Texte übernehmen.',
+            libDelete: 'Löschen',
+            libDeleteFor: (s) => '„' + s + '“ löschen',
+            libDeleteAll: 'Alle löschen',
+            libConfirm: 'Alle gespeicherten Alternativtexte löschen?',
+            libImage: 'Bild', libGraphic: 'Grafik',
+            aboutAutoLabel: 'Was das Programm automatisch korrigiert:',
+            aboutAuto: 'Tags/Strukturbaum (Überschriften, Absätze, Listen, Tabellen mit Kopfzellen – auch über mehrere Seiten –, Abbildungen, Diagramme, Formeln, Fussnoten, Links, Formularfelder), Lesereihenfolge, Artefakte (Kopf-/Fusszeilen, Seitenzahlen, wiederholte Tabellenköpfe, Hintergründe, unsichtbarer Text), Unicode-Zuordnung der Schriften, Einbettung fehlender Schriften, Glyphenbreiten, Dokumentsprache, Titel, Titelanzeige, Lesezeichen, XMP-Metadaten mit PDF/UA-Kennung, Tab-Reihenfolge und Beschreibungen von Links, Formularfeldern und Anmerkungen.',
+            aboutPersonLabel: 'Was eine Person prüfen sollte:',
+            aboutPerson: 'ob die Alternativtexte von Bildern, Diagrammen und Formeln den Inhalt treffend beschreiben und ob die erkannte Struktur inhaltlich stimmt. Die integrierte Prüfung deckt die maschinell prüfbaren Regeln von PDF/UA-1 ab (Regelnummern wie bei veraPDF). Gescannte PDFs ohne Text brauchen zuerst eine Texterkennung (OCR); sie werden nicht als PDF/UA gekennzeichnet.',
+
+            // CSV, ZIP and test report
+            csvHead: ['Datei', 'Ausgabe', 'Status', 'Seiten', 'Regeln vorher', 'Regeln nachher', 'PDF/UA-Prüfung', 'Titel', 'Sprache', 'Abbildungen mit Standard-Alternativtext', 'Fehler/Hinweise'],
+            csvStatus: { done: 'fertig', error: 'Fehler', open: 'offen' },
+            csvCheck: { passed: 'bestanden', open: 'offen' },
+            csvName: 'PDF-UA-Korrektur_Uebersicht.csv',
+            zipName: 'PDF-UA-Korrektur.zip',
+            reportSuffix: '_Pruefbericht.html',
+            rep: {
+                title: (name) => 'Prüfbericht ' + name,
+                h1: 'Prüfbericht Barrierefreiheit (PDF/UA-1)',
+                file: 'Datei', created: 'Erstellt', docTitle: 'Titel', lang: 'Sprache', pages: 'Seiten',
+                auto: (b, a) => '<b>Automatische Prüfung:</b> ' + (b ? 'vorher ' + b + ', ' : '') + 'nachher ' + a + ' maschinell prüfbare Regeln erfüllt (Regelnummern nach veraPDF-Profil PDF/UA-1).',
+                errors: 'Fehler', fixes: 'Durchgeführte Korrekturen', warnings: 'Hinweise (manuell prüfen)',
+                alts: 'Alternativtexte', altPages: 'Seite(n)', altText: 'Alternativtext', decorative: 'dekorativ',
+                log: 'Prüfprotokoll', rule: 'Regel', req: 'Anforderung', result: 'Ergebnis', ok: 'erfüllt', fail: 'nicht erfüllt',
+                foot: 'Nicht maschinell prüfbar und daher manuell zu kontrollieren: inhaltliche Richtigkeit der Alternativtexte, sinnvolle Lesereihenfolge, korrekte Auszeichnung von Überschriften und Tabellen, Farbkontraste.'
+            }
+        };
+
+        I18N.fr = {
+            locale: 'fr-CH',
+            appTitle: 'Correction PDF/UA',
+            appTagline: 'Rend automatiquement les fichiers PDF accessibles (PDF/UA-1). Tout se passe localement dans votre navigateur – aucun fichier ne quitte votre ordinateur.',
+            langs: { 'de-CH': 'Allemand (Suisse)', 'fr-CH': 'Français (Suisse)', 'it-CH': 'Italien (Suisse)', 'rm-CH': 'Romanche', en: 'Anglais', 'de-DE': 'Allemand (Allemagne)', 'de-AT': 'Allemand (Autriche)', 'fr-FR': 'Français (France)', 'it-IT': 'Italien (Italie)', auto: 'Détection automatique' },
+            uiLangs: { de: 'Allemand', fr: 'Français', it: 'Italien' },
+
+            stepsNav: 'Étapes',
+            step1: 'Importer', step2: 'Vérifier', step3: 'Télécharger',
+            stepDoneSr: '(terminée)',
+            uiLangGroup: 'Langue de l’interface',
+            settings: 'Paramètres',
+
+            s1Title: 'Ajouter des fichiers PDF',
+            dropTitle: 'Glissez les fichiers PDF ici',
+            pickFiles: 'Choisir des fichiers…',
+            pickFolder: 'Choisir un dossier…',
+            dropHint: 'Un fichier, plusieurs fichiers ou un dossier entier.',
+            filesHeading: (n) => 'Fichiers (' + n + ')',
+            clearList: 'Vider la liste',
+            noFiles: 'Aucun fichier pour l’instant. Glissez des PDF dans la zone ci-dessus ou choisissez-les.',
+            customize: 'Adapter',
+            customizeFor: (name) => 'Adapter ' + name,
+            remove: 'Retirer',
+            removeFor: (name) => 'Retirer ' + name,
+            ovNote: 'Facultatif – laisser vide pour utiliser les paramètres.',
+            ovTitle: 'Titre',
+            ovLang: 'Langue',
+            ovLogo: 'Texte alternatif des logos',
+            ovLangDefault: (name) => 'selon les paramètres (' + name + ')',
+            titlePh: { keep: 'titre existant ou tiré du contenu', content: 'tiré automatiquement du contenu', filename: 'tiré du nom de fichier' },
+            status: { ready: 'Prêt', queued: 'En attente', running: 'En cours…', done: 'Terminé', error: 'Erreur' },
+            summaryLabel: 'Paramètres',
+            summaryChange: 'Modifier',
+            sumTitle: { keep: 'Titre : existant ou tiré du contenu', content: 'Titre : tiré du contenu', filename: 'Titre : tiré du nom de fichier' },
+            sumExisting: { auto: 'Balises : automatique', retag: 'Balises : recréer', keep: 'Balises : conserver' },
+            sumBookmarks: 'Signets',
+            sumRunning: 'En-têtes et pieds de page en artefact',
+            sumAutostart: 'Démarrage immédiat',
+            sumSuffix: (s) => 'Nom de fichier + « ' + s + ' »',
+            correct: 'Corriger',
+            correctN: (n) => 'Corriger (' + n + ')',
+
+            s2TitleRun: 'Correction des fichiers en cours',
+            s2RunNote: 'Les fichiers sont traités l’un après l’autre.',
+            s2TitleReview: 'Vérifier les textes alternatifs',
+            stages: { Start: 'Lecture…', Analyse: 'Analyse du contenu…', Layout: 'Détection de la structure…', Tags: 'Écriture des balises…', Schriften: 'Réparation des polices…', Speichern: 'Enregistrement…', 'Prüfung': 'Contrôle PDF/UA…', Fertig: 'Terminé' },
+            waiting: 'En attente…',
+            progressFor: (name) => 'Progression ' + name,
+            reviewIntro: (n) => plural(n, '1 image nécessite votre vérification.', '{n} images nécessitent votre vérification.'),
+            reviewNone: 'Aucune image ne nécessite de vérification.',
+            reviewHelp: 'Décrivez ce que l’image exprime. La touche Entrée accepte le texte et passe à l’image suivante. Les textes acceptés sont enregistrés et réutilisés automatiquement pour les prochains fichiers contenant la même image.',
+            reviewCount: (a, n) => a + ' sur ' + n + ' acceptés',
+            acceptAll: 'Tout accepter',
+            accept: 'Accepter',
+            acceptFor: (i) => 'Accepter le texte alternatif ' + i,
+            accepted: 'Accepté',
+            altLabel: (i, n) => 'Texte alternatif de l’image ' + i + ' sur ' + n,
+            decorative: 'Décorative (pas de texte alternatif)',
+            needText: 'Veuillez saisir un texte ou choisir « Décorative ».',
+            suggestions: 'Suggestions tirées de vos textes enregistrés :',
+            useSuggestion: (s) => 'Utiliser la suggestion : ' + s,
+            source: { default: 'Suggestion automatique', logo: 'Suggestion automatique (logo)', settings: 'Selon les paramètres', caption: 'Tiré de la légende', formula: 'Lu automatiquement (formule)', tags: 'Tiré des balises existantes', library: 'Tiré de vos textes enregistrés' },
+            figKind: { image: 'Image', vector: 'Graphique vectoriel / diagramme', formula: 'Formule' },
+            pagesShort: (pages) => (pages.length === 1 ? 'Page ' : 'Pages ') + pages.join(', '),
+            showAllFigures: (n) => 'Afficher aussi les images sans vérification nécessaire (' + n + ')',
+            continueApply: 'Accepter et continuer',
+            continueOnly: 'Continuer',
+            applying: 'Insertion des textes acceptés…',
+
+            s3Title: 'Résultats',
+            s3Summary: (n, ok, hints, errors) => [plural(n, '1 fichier', '{n} fichiers'), ok ? ok + ' conformes PDF/UA' : '', hints ? hints + ' avec remarques' : '', errors ? plural(errors, '1 erreur', '{n} erreurs') : ''].filter(Boolean).join(' · '),
+            downloadAll: 'Tout télécharger (ZIP)',
+            csv: 'Vue d’ensemble (CSV)',
+            rerunAll: 'Traiter à nouveau',
+            addMore: 'Ajouter d’autres fichiers',
+            stOk: 'Conforme PDF/UA', stHints: 'Remarques', stError: 'Erreur',
+            hintRules: (n) => plural(n, '1 règle non respectée', '{n} règles non respectées'),
+            hintAlt: (n) => plural(n, '1 texte alternatif non vérifié', '{n} textes alternatifs non vérifiés'),
+            hintOcr: 'Reconnaissance de texte (OCR) nécessaire',
+            hintLimited: 'Avec restrictions',
+            download: 'Télécharger',
+            downloadFor: (name) => 'Télécharger ' + name,
+            showDetails: 'Afficher les détails',
+            hideDetails: 'Masquer les détails',
+            pages: (n) => plural(n, '1 page', '{n} pages'),
+            boxTitle: 'Titre', boxLang: 'Langue', boxCheck: 'Contrôle PDF/UA automatique', boxStruct: 'Structure détectée',
+            beforeAfter: (b, a, total) => (b !== null ? 'avant ' + b + '/' + total + ' → ' : '') + 'après ' + a + '/' + total + ' règles respectées',
+            struct: { tags: (n) => n + ' balises', tables: (n) => plural(n, '1 tableau', '{n} tableaux'), lists: (n) => plural(n, '1 liste', '{n} listes'), figures: (n) => plural(n, '1 image', '{n} images'), formulas: (n) => plural(n, '1 formule', '{n} formules'), notes: (n) => plural(n, '1 note de bas de page', '{n} notes de bas de page') },
+            outlineTitle: (n, more) => 'Structure détectée dans l’ordre de lecture (' + n + (more ? '+' : '') + ' éléments)',
+            outlineTypes: { H1: 'Titre 1', H2: 'Titre 2', H3: 'Titre 3', H4: 'Titre 4', H5: 'Titre 5', H6: 'Titre 6', P: 'Paragraphe', Table: 'Tableau', L: 'Liste', Figure: 'Image', Formula: 'Formule', Note: 'Note de bas de page', Link: 'Lien', Form: 'Champ de formulaire', Annot: 'Annotation' },
+            pageShort: (p) => 'p. ' + p,
+            fixesTitle: 'Corrections effectuées',
+            warningsTitle: 'Remarques',
+            errorsTitle: 'Erreurs',
+            logTitle: (ok, total) => 'Journal de contrôle (' + ok + '/' + total + ' règles respectées)',
+            onlyFailed: 'Seulement les règles non respectées',
+            colRule: 'Règle', colReq: 'Exigence', colResult: 'Résultat',
+            ruleOk: 'respectée', ruleFail: 'non respectée',
+            allRulesOk: 'Toutes les règles sont respectées.',
+            figuresTitle: (n) => 'Images et textes alternatifs (' + n + ')',
+            editInReview: 'Modifier à l’étape « Vérifier »',
+            decorativeShort: 'décorative',
+            adjustTitle: 'Adapter le titre, la langue et le texte du logo',
+            rerunFile: 'Traiter à nouveau',
+            report: 'Rapport de contrôle (HTML)',
+            engineGerman: 'Les messages du contrôle et les intitulés des règles sont en allemand.',
+            unknownError: 'Erreur inconnue',
+            engineStartError: (m) => 'Le traitement n’a pas pu démarrer : ' + m,
+
+            annAdded: (n) => plural(n, '1 fichier ajouté.', '{n} fichiers ajoutés.'),
+            annNoPdf: 'Aucun fichier PDF trouvé.',
+            annStart: (n) => plural(n, 'Correction d’1 fichier.', 'Correction de {n} fichiers.'),
+            annFileOk: (name) => name + ' : terminé, contrôle PDF/UA réussi.',
+            annFileOpen: (name) => name + ' : terminé, avec des points ouverts.',
+            annFileError: (name) => name + ' : erreur lors du traitement.',
+            annReview: (n) => plural(n, 'Traitement terminé. 1 image nécessite votre vérification.', 'Traitement terminé. {n} images nécessitent votre vérification.'),
+            annDone: (n) => plural(n, 'Terminé. 1 fichier est prêt à être téléchargé.', 'Terminé. {n} fichiers sont prêts à être téléchargés.'),
+            annStep: (i, name) => 'Étape ' + i + ' : ' + name,
+            annReset: 'Paramètres par défaut rétablis.',
+            annLang: 'Langue : français',
+
+            drawerTitle: 'Paramètres',
+            drawerNote: 'S’appliquent à tous les fichiers et restent enregistrés dans ce navigateur. Tout peut être modifié par fichier avant le démarrage.',
+            drawerNoteSession: 'S’appliquent à tous les fichiers. Tout peut être modifié par fichier avant le démarrage.',
+            close: 'Fermer',
+            grpDocument: 'Document', grpAlt: 'Textes alternatifs', grpProcessing: 'Traitement', grpLibrary: 'Textes alternatifs enregistrés', grpAbout: 'À propos de cet outil',
+            optLang: 'Langue du document',
+            optTitle: 'Titre du document',
+            titleModes: { keep: 'Conserver le titre existant, sinon le tirer du contenu', content: 'Toujours tiré du contenu (titre principal)', filename: 'Tiré du nom de fichier' },
+            optLogoAlt: 'Texte alternatif des logos',
+            optImgAlt: 'Texte alternatif des images',
+            optChartAlt: 'Texte alternatif des graphiques',
+            optSuffix: 'Ajout au nom de fichier',
+            optExisting: 'PDF déjà balisés',
+            existingModes: { auto: 'Automatique : conserver les bonnes balises, recréer les défectueuses', retag: 'Toujours recréer les balises', keep: 'Toujours conserver les balises existantes (réparer seulement)' },
+            optBookmarks: 'Créer des signets à partir des titres (s’il n’y en a pas)',
+            optRunning: 'Marquer les en-têtes et pieds de page récurrents comme artefacts',
+            optAutostart: 'Corriger les fichiers dès leur ajout',
+            resetSettings: 'Rétablir les paramètres par défaut',
+            done: 'Terminé',
+            libEmpty: 'Aucun texte alternatif enregistré pour l’instant. Ils sont créés lorsque vous acceptez des textes à l’étape « Vérifier ».',
+            libDelete: 'Supprimer',
+            libDeleteFor: (s) => 'Supprimer « ' + s + ' »',
+            libDeleteAll: 'Tout supprimer',
+            libConfirm: 'Supprimer tous les textes alternatifs enregistrés ?',
+            libImage: 'Image', libGraphic: 'Graphique',
+            aboutAutoLabel: 'Ce que le programme corrige automatiquement :',
+            aboutAuto: 'balises et arbre de structure (titres, paragraphes, listes, tableaux avec cellules d’en-tête – y compris sur plusieurs pages –, images, graphiques, formules, notes de bas de page, liens, champs de formulaire), ordre de lecture, artefacts (en-têtes et pieds de page, numéros de page, en-têtes de tableau répétés, arrière-plans, texte invisible), correspondance Unicode des polices, incorporation des polices manquantes, largeurs des glyphes, langue du document, titre, affichage du titre, signets, métadonnées XMP avec identifiant PDF/UA, ordre de tabulation et descriptions des liens, champs de formulaire et annotations.',
+            aboutPersonLabel: 'Ce qu’une personne devrait vérifier :',
+            aboutPerson: 'si les textes alternatifs des images, graphiques et formules décrivent correctement le contenu et si la structure détectée est juste sur le fond. Le contrôle intégré couvre les règles de PDF/UA-1 vérifiables automatiquement (numéros de règle comme dans veraPDF). Les PDF numérisés sans texte nécessitent d’abord une reconnaissance de texte (OCR) ; ils ne sont pas marqués comme PDF/UA.',
+
+            csvHead: ['Fichier', 'Sortie', 'Statut', 'Pages', 'Règles avant', 'Règles après', 'Contrôle PDF/UA', 'Titre', 'Langue', 'Images avec texte alternatif par défaut', 'Erreurs/remarques'],
+            csvStatus: { done: 'terminé', error: 'erreur', open: 'ouvert' },
+            csvCheck: { passed: 'réussi', open: 'ouvert' },
+            csvName: 'Correction-PDF-UA_Vue-ensemble.csv',
+            zipName: 'Correction-PDF-UA.zip',
+            reportSuffix: '_Rapport-controle.html',
+            rep: {
+                title: (name) => 'Rapport de contrôle ' + name,
+                h1: 'Rapport de contrôle d’accessibilité (PDF/UA-1)',
+                file: 'Fichier', created: 'Créé le', docTitle: 'Titre', lang: 'Langue', pages: 'Pages',
+                auto: (b, a) => '<b>Contrôle automatique :</b> ' + (b ? 'avant ' + b + ', ' : '') + 'après ' + a + ' règles vérifiables automatiquement respectées (numéros de règle selon le profil veraPDF PDF/UA-1).',
+                errors: 'Erreurs', fixes: 'Corrections effectuées', warnings: 'Remarques (à vérifier manuellement)',
+                alts: 'Textes alternatifs', altPages: 'Page(s)', altText: 'Texte alternatif', decorative: 'décorative',
+                log: 'Journal de contrôle', rule: 'Règle', req: 'Exigence', result: 'Résultat', ok: 'respectée', fail: 'non respectée',
+                foot: 'Non vérifiable automatiquement et donc à contrôler manuellement : exactitude des textes alternatifs, ordre de lecture cohérent, balisage correct des titres et des tableaux, contrastes de couleur.'
+            }
+        };
+
+        I18N.it = {
+            locale: 'it-CH',
+            appTitle: 'Correzione PDF/UA',
+            appTagline: 'Rende automaticamente accessibili i file PDF (PDF/UA-1). Tutto avviene localmente nel tuo browser: nessun file lascia il tuo computer.',
+            langs: { 'de-CH': 'Tedesco (Svizzera)', 'fr-CH': 'Francese (Svizzera)', 'it-CH': 'Italiano (Svizzera)', 'rm-CH': 'Romancio', en: 'Inglese', 'de-DE': 'Tedesco (Germania)', 'de-AT': 'Tedesco (Austria)', 'fr-FR': 'Francese (Francia)', 'it-IT': 'Italiano (Italia)', auto: 'Rilevamento automatico' },
+            uiLangs: { de: 'Tedesco', fr: 'Francese', it: 'Italiano' },
+
+            stepsNav: 'Passaggi',
+            step1: 'Carica', step2: 'Verifica', step3: 'Scarica',
+            stepDoneSr: '(completato)',
+            uiLangGroup: 'Lingua dell’interfaccia',
+            settings: 'Impostazioni',
+
+            s1Title: 'Aggiungi file PDF',
+            dropTitle: 'Trascina qui i file PDF',
+            pickFiles: 'Scegli file…',
+            pickFolder: 'Scegli cartella…',
+            dropHint: 'Un file, più file o un’intera cartella.',
+            filesHeading: (n) => 'File (' + n + ')',
+            clearList: 'Svuota elenco',
+            noFiles: 'Ancora nessun file. Trascina i PDF nell’area qui sopra o selezionali.',
+            customize: 'Personalizza',
+            customizeFor: (name) => 'Personalizza ' + name,
+            remove: 'Rimuovi',
+            removeFor: (name) => 'Rimuovi ' + name,
+            ovNote: 'Facoltativo: lascia vuoto per usare le impostazioni.',
+            ovTitle: 'Titolo',
+            ovLang: 'Lingua',
+            ovLogo: 'Testo alternativo per i loghi',
+            ovLangDefault: (name) => 'come nelle impostazioni (' + name + ')',
+            titlePh: { keep: 'titolo esistente o ricavato dal contenuto', content: 'ricavato automaticamente dal contenuto', filename: 'ricavato dal nome del file' },
+            status: { ready: 'Pronto', queued: 'In attesa', running: 'In corso…', done: 'Completato', error: 'Errore' },
+            summaryLabel: 'Impostazioni',
+            summaryChange: 'Modifica',
+            sumTitle: { keep: 'Titolo: esistente o dal contenuto', content: 'Titolo: dal contenuto', filename: 'Titolo: dal nome del file' },
+            sumExisting: { auto: 'Tag: automatico', retag: 'Tag: ricrea', keep: 'Tag: mantieni' },
+            sumBookmarks: 'Segnalibri',
+            sumRunning: 'Intestazioni e piè di pagina come artefatti',
+            sumAutostart: 'Avvio immediato',
+            sumSuffix: (s) => 'Nome file + «' + s + '»',
+            correct: 'Correggi',
+            correctN: (n) => 'Correggi (' + n + ')',
+
+            s2TitleRun: 'Correzione dei file in corso',
+            s2RunNote: 'I file vengono elaborati uno dopo l’altro.',
+            s2TitleReview: 'Verifica i testi alternativi',
+            stages: { Start: 'Lettura…', Analyse: 'Analisi del contenuto…', Layout: 'Riconoscimento della struttura…', Tags: 'Scrittura dei tag…', Schriften: 'Riparazione dei caratteri…', Speichern: 'Salvataggio…', 'Prüfung': 'Verifica PDF/UA…', Fertig: 'Completato' },
+            waiting: 'In attesa…',
+            progressFor: (name) => 'Avanzamento ' + name,
+            reviewIntro: (n) => plural(n, '1 immagine richiede la tua verifica.', '{n} immagini richiedono la tua verifica.'),
+            reviewNone: 'Nessuna immagine richiede una verifica.',
+            reviewHelp: 'Descrivi ciò che l’immagine comunica. Il tasto Invio accetta il testo e passa all’immagine successiva. I testi accettati vengono salvati e riutilizzati automaticamente nei file futuri con la stessa immagine.',
+            reviewCount: (a, n) => a + ' di ' + n + ' accettati',
+            acceptAll: 'Accetta tutti',
+            accept: 'Accetta',
+            acceptFor: (i) => 'Accetta il testo alternativo ' + i,
+            accepted: 'Accettato',
+            altLabel: (i, n) => 'Testo alternativo dell’immagine ' + i + ' di ' + n,
+            decorative: 'Decorativa (nessun testo alternativo)',
+            needText: 'Inserisci un testo o scegli «Decorativa».',
+            suggestions: 'Suggerimenti dai tuoi testi salvati:',
+            useSuggestion: (s) => 'Usa il suggerimento: ' + s,
+            source: { default: 'Suggerimento automatico', logo: 'Suggerimento automatico (logo)', settings: 'Dalle impostazioni', caption: 'Dalla didascalia', formula: 'Letto automaticamente (formula)', tags: 'Dai tag esistenti', library: 'Dai tuoi testi salvati' },
+            figKind: { image: 'Immagine', vector: 'Grafica vettoriale / diagramma', formula: 'Formula' },
+            pagesShort: (pages) => (pages.length === 1 ? 'Pagina ' : 'Pagine ') + pages.join(', '),
+            showAllFigures: (n) => 'Mostra anche le immagini che non richiedono verifica (' + n + ')',
+            continueApply: 'Accetta e continua',
+            continueOnly: 'Continua',
+            applying: 'Inserimento dei testi accettati…',
+
+            s3Title: 'Risultati',
+            s3Summary: (n, ok, hints, errors) => [plural(n, '1 file', '{n} file'), ok ? ok + ' conformi PDF/UA' : '', hints ? hints + ' con osservazioni' : '', errors ? plural(errors, '1 errore', '{n} errori') : ''].filter(Boolean).join(' · '),
+            downloadAll: 'Scarica tutti (ZIP)',
+            csv: 'Riepilogo (CSV)',
+            rerunAll: 'Rielabora',
+            addMore: 'Aggiungi altri file',
+            stOk: 'Conforme PDF/UA', stHints: 'Osservazioni', stError: 'Errore',
+            hintRules: (n) => plural(n, '1 regola non soddisfatta', '{n} regole non soddisfatte'),
+            hintAlt: (n) => plural(n, '1 testo alternativo non verificato', '{n} testi alternativi non verificati'),
+            hintOcr: 'Riconoscimento del testo (OCR) necessario',
+            hintLimited: 'Con limitazioni',
+            download: 'Scarica',
+            downloadFor: (name) => 'Scarica ' + name,
+            showDetails: 'Mostra dettagli',
+            hideDetails: 'Nascondi dettagli',
+            pages: (n) => plural(n, '1 pagina', '{n} pagine'),
+            boxTitle: 'Titolo', boxLang: 'Lingua', boxCheck: 'Verifica PDF/UA automatica', boxStruct: 'Struttura riconosciuta',
+            beforeAfter: (b, a, total) => (b !== null ? 'prima ' + b + '/' + total + ' → ' : '') + 'dopo ' + a + '/' + total + ' regole soddisfatte',
+            struct: { tags: (n) => n + ' tag', tables: (n) => plural(n, '1 tabella', '{n} tabelle'), lists: (n) => plural(n, '1 elenco', '{n} elenchi'), figures: (n) => plural(n, '1 immagine', '{n} immagini'), formulas: (n) => plural(n, '1 formula', '{n} formule'), notes: (n) => plural(n, '1 nota a piè di pagina', '{n} note a piè di pagina') },
+            outlineTitle: (n, more) => 'Struttura riconosciuta in ordine di lettura (' + n + (more ? '+' : '') + ' elementi)',
+            outlineTypes: { H1: 'Titolo 1', H2: 'Titolo 2', H3: 'Titolo 3', H4: 'Titolo 4', H5: 'Titolo 5', H6: 'Titolo 6', P: 'Paragrafo', Table: 'Tabella', L: 'Elenco', Figure: 'Immagine', Formula: 'Formula', Note: 'Nota a piè di pagina', Link: 'Link', Form: 'Campo modulo', Annot: 'Annotazione' },
+            pageShort: (p) => 'p. ' + p,
+            fixesTitle: 'Correzioni eseguite',
+            warningsTitle: 'Osservazioni',
+            errorsTitle: 'Errori',
+            logTitle: (ok, total) => 'Protocollo di verifica (' + ok + '/' + total + ' regole soddisfatte)',
+            onlyFailed: 'Solo regole non soddisfatte',
+            colRule: 'Regola', colReq: 'Requisito', colResult: 'Risultato',
+            ruleOk: 'soddisfatta', ruleFail: 'non soddisfatta',
+            allRulesOk: 'Tutte le regole sono soddisfatte.',
+            figuresTitle: (n) => 'Immagini e testi alternativi (' + n + ')',
+            editInReview: 'Modifica nel passaggio «Verifica»',
+            decorativeShort: 'decorativa',
+            adjustTitle: 'Personalizza titolo, lingua e testo del logo',
+            rerunFile: 'Rielabora',
+            report: 'Rapporto di verifica (HTML)',
+            engineGerman: 'I messaggi della verifica e i testi delle regole sono in tedesco.',
+            unknownError: 'Errore sconosciuto',
+            engineStartError: (m) => 'Impossibile avviare l’elaborazione: ' + m,
+
+            annAdded: (n) => plural(n, '1 file aggiunto.', '{n} file aggiunti.'),
+            annNoPdf: 'Nessun file PDF trovato.',
+            annStart: (n) => plural(n, 'Correzione di 1 file.', 'Correzione di {n} file.'),
+            annFileOk: (name) => name + ': completato, verifica PDF/UA superata.',
+            annFileOpen: (name) => name + ': completato, con punti aperti.',
+            annFileError: (name) => name + ': errore durante l’elaborazione.',
+            annReview: (n) => plural(n, 'Elaborazione completata. 1 immagine richiede la tua verifica.', 'Elaborazione completata. {n} immagini richiedono la tua verifica.'),
+            annDone: (n) => plural(n, 'Completato. 1 file è pronto per il download.', 'Completato. {n} file sono pronti per il download.'),
+            annStep: (i, name) => 'Passaggio ' + i + ': ' + name,
+            annReset: 'Impostazioni predefinite ripristinate.',
+            annLang: 'Lingua: italiano',
+
+            drawerTitle: 'Impostazioni',
+            drawerNote: 'Valgono per tutti i file e restano salvate in questo browser. Prima dell’avvio tutto può essere modificato per singolo file.',
+            drawerNoteSession: 'Valgono per tutti i file. Prima dell’avvio tutto può essere modificato per singolo file.',
+            close: 'Chiudi',
+            grpDocument: 'Documento', grpAlt: 'Testi alternativi', grpProcessing: 'Elaborazione', grpLibrary: 'Testi alternativi salvati', grpAbout: 'Informazioni su questo strumento',
+            optLang: 'Lingua del documento',
+            optTitle: 'Titolo del documento',
+            titleModes: { keep: 'Mantieni il titolo esistente, altrimenti ricavalo dal contenuto', content: 'Sempre dal contenuto (titolo principale)', filename: 'Dal nome del file' },
+            optLogoAlt: 'Testo alternativo per i loghi',
+            optImgAlt: 'Testo alternativo per le immagini',
+            optChartAlt: 'Testo alternativo per i grafici',
+            optSuffix: 'Aggiunta al nome del file',
+            optExisting: 'PDF già taggati',
+            existingModes: { auto: 'Automatico: mantieni i tag validi, ricrea quelli difettosi', retag: 'Ricrea sempre i tag', keep: 'Mantieni sempre i tag esistenti (solo riparazione)' },
+            optBookmarks: 'Crea segnalibri dai titoli (se non presenti)',
+            optRunning: 'Contrassegna intestazioni e piè di pagina ricorrenti come artefatti',
+            optAutostart: 'Correggi i file subito dopo averli aggiunti',
+            resetSettings: 'Ripristina le impostazioni predefinite',
+            done: 'Fatto',
+            libEmpty: 'Ancora nessun testo alternativo salvato. Vengono creati quando accetti dei testi nel passaggio «Verifica».',
+            libDelete: 'Elimina',
+            libDeleteFor: (s) => 'Elimina «' + s + '»',
+            libDeleteAll: 'Elimina tutti',
+            libConfirm: 'Eliminare tutti i testi alternativi salvati?',
+            libImage: 'Immagine', libGraphic: 'Grafico',
+            aboutAutoLabel: 'Cosa corregge automaticamente il programma:',
+            aboutAuto: 'tag e albero della struttura (titoli, paragrafi, elenchi, tabelle con celle d’intestazione – anche su più pagine –, immagini, grafici, formule, note a piè di pagina, link, campi modulo), ordine di lettura, artefatti (intestazioni e piè di pagina, numeri di pagina, intestazioni di tabella ripetute, sfondi, testo invisibile), mappatura Unicode dei caratteri, incorporamento dei caratteri mancanti, larghezze dei glifi, lingua del documento, titolo, visualizzazione del titolo, segnalibri, metadati XMP con identificativo PDF/UA, ordine di tabulazione e descrizioni di link, campi modulo e annotazioni.',
+            aboutPersonLabel: 'Cosa dovrebbe verificare una persona:',
+            aboutPerson: 'se i testi alternativi di immagini, grafici e formule descrivono correttamente il contenuto e se la struttura riconosciuta è corretta nel merito. La verifica integrata copre le regole di PDF/UA-1 verificabili automaticamente (numeri delle regole come in veraPDF). I PDF scansionati senza testo richiedono prima un riconoscimento del testo (OCR); non vengono contrassegnati come PDF/UA.',
+
+            csvHead: ['File', 'Output', 'Stato', 'Pagine', 'Regole prima', 'Regole dopo', 'Verifica PDF/UA', 'Titolo', 'Lingua', 'Immagini con testo alternativo predefinito', 'Errori/osservazioni'],
+            csvStatus: { done: 'completato', error: 'errore', open: 'aperto' },
+            csvCheck: { passed: 'superata', open: 'aperta' },
+            csvName: 'Correzione-PDF-UA_Riepilogo.csv',
+            zipName: 'Correzione-PDF-UA.zip',
+            reportSuffix: '_Rapporto-verifica.html',
+            rep: {
+                title: (name) => 'Rapporto di verifica ' + name,
+                h1: 'Rapporto di verifica dell’accessibilità (PDF/UA-1)',
+                file: 'File', created: 'Creato il', docTitle: 'Titolo', lang: 'Lingua', pages: 'Pagine',
+                auto: (b, a) => '<b>Verifica automatica:</b> ' + (b ? 'prima ' + b + ', ' : '') + 'dopo ' + a + ' regole verificabili automaticamente soddisfatte (numeri delle regole secondo il profilo veraPDF PDF/UA-1).',
+                errors: 'Errori', fixes: 'Correzioni eseguite', warnings: 'Osservazioni (da verificare manualmente)',
+                alts: 'Testi alternativi', altPages: 'Pagina/e', altText: 'Testo alternativo', decorative: 'decorativa',
+                log: 'Protocollo di verifica', rule: 'Regola', req: 'Requisito', result: 'Risultato', ok: 'soddisfatta', fail: 'non soddisfatta',
+                foot: 'Non verificabile automaticamente e quindi da controllare manualmente: correttezza dei testi alternativi, ordine di lettura sensato, marcatura corretta di titoli e tabelle, contrasti cromatici.'
+            }
+        };
+
+        const LANG_CODES = ['de-CH', 'fr-CH', 'it-CH', 'rm-CH', 'en', 'de-DE', 'de-AT', 'fr-FR', 'it-IT', 'auto'];
+        const UI_LANGS = ['de', 'fr', 'it'];
         const DEFAULT_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-        const DEFAULT_TAGLINE = 'Macht PDF-Dateien automatisch barrierefrei (PDF/UA-1). Alles läuft lokal in Ihrem Browser – keine Datei verlässt Ihren Computer.';
 
         // widget properties: name -> [type, default]; keep in sync with pdfuaWidget.json
         const PROPS = {
-            appTitle: ['string', 'PDF/UA-Korrektur'],
-            appTagline: ['string', DEFAULT_TAGLINE],
+            appTitle: ['string', I18N.de.appTitle],
+            appTagline: ['string', I18N.de.appTagline],
             logoText: ['string', 'UA'],
+            uiLanguage: ['string', 'de'],
+            showLanguageSwitch: ['boolean', true],
             showHeader: ['boolean', true],
             showSettings: ['boolean', true],
             showLibrary: ['boolean', true],
@@ -7037,7 +7562,7 @@ globalThis.PDFUA_FONTS = {"Caladea-Bold":"AAEAAAAOAIAAAwBgR0RFRg6PDukAAIfsAAAAvk
             colorScheme: ['string', 'light'],
             accentColor: ['string', '#0b5f8a'],
             fontFamily: ['string', DEFAULT_FONT],
-            contentMaxWidth: ['integer', 1080],
+            contentMaxWidth: ['integer', 960],
             defaultLang: ['string', 'de-CH'],
             defaultTitleMode: ['string', 'keep'],
             defaultLogoAlt: ['string', 'Logo'],
@@ -7051,7 +7576,7 @@ globalThis.PDFUA_FONTS = {"Caladea-Bold":"AAEAAAAOAIAAAwBgR0RFRg6PDukAAIfsAAAAvk
             rememberSettings: ['boolean', true]
         };
         const TEXT_KEYS = ['appTitle', 'appTagline', 'logoText'];
-        const VISIBILITY_KEYS = ['showHeader', 'showSettings', 'showLibrary', 'showFooter'];
+        const VISIBILITY_KEYS = ['showHeader', 'showSettings', 'showLibrary', 'showFooter', 'showLanguageSwitch'];
         const LOOK_KEYS = ['colorScheme', 'accentColor', 'fontFamily', 'contentMaxWidth'];
         // setting key (as in the stand-alone program) -> widget property with its story default
         const SETTING_PROPS = { lang: 'defaultLang', title: 'defaultTitleMode', logoAlt: 'defaultLogoAlt', imgAlt: 'defaultImgAlt', chartAlt: 'defaultChartAlt', suffix: 'defaultSuffix', existing: 'defaultExisting', bookmarks: 'defaultBookmarks', running: 'defaultRunning', autostart: 'defaultAutostart' };
@@ -7063,240 +7588,330 @@ globalThis.PDFUA_FONTS = {"Caladea-Bold":"AAEAAAAOAIAAAwBgR0RFRg6PDukAAIfsAAAAvk
             return v === null || v === undefined ? def : String(v);
         }
 
+        const svg = (body) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + body + '</svg>';
+        const ICON = {
+            upload: svg('<path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>'),
+            sliders: svg('<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'),
+            check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+            file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>'),
+            download: svg('<path d="M12 4v11M7 10.5l5 5 5-5"/><path d="M4 19.5h16"/>'),
+            close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+            alert: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>')
+        };
+
+        const stepButton = (n) => '<li><button type="button" class="step-btn" data-step="' + n + '"><span class="num">' + n + '</span><span class="lbl" data-i18n="step' + n + '"></span> <span class="sr-only done-sr" data-i18n="stepDoneSr"></span></button></li>';
+
         const tmpl = document.createElement('template');
         tmpl.innerHTML = `
 <style>
 :host { display: block; width: 100%; height: 100%; }
 .pdfua {
-  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --text: #1b1f24; --muted: #5b6470; --border: #d9dde3;
-  --accent: var(--user-accent, #0b5f8a); --accent-ink: var(--user-accent-ink, #ffffff); --accent-soft: var(--user-accent-soft, #e3f0f7);
-  --ok: #1d7a3e; --ok-soft: #e4f4ea; --warn: #8a5a00; --warn-soft: #fbf1dc; --err: #b3261e; --err-soft: #fbe7e5;
-  --focus: #f0a400; --radius: 10px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --text: #1c2128; --muted: #576170;
+  --border: #e0e4e9; --field: #848e9a;
+  --accent: var(--user-accent, #0b5f8a); --accent-ink: var(--user-accent-ink, #ffffff); --accent-soft: var(--user-accent-soft, #e6f0f6);
+  --ok: #19703f; --ok-soft: #e5f3ea; --warn: #7e5300; --warn-soft: #fbf0d8; --err: #ad271d; --err-soft: #fbe8e6;
+  --focus: #1d4ed8; --scrim: rgba(16, 24, 40, .34);
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 6px rgba(16, 24, 40, .05);
 }
 .pdfua.scheme-dark {
-  --bg: #12161b; --surface: #1a2027; --surface-2: #222a33; --text: #e7ebf0; --muted: #9aa5b1; --border: #313b46;
-  --accent: #5db3e0; --accent-ink: #0b1620; --accent-soft: #16303f;
-  --ok: #6fd391; --ok-soft: #173325; --warn: #f0c060; --warn-soft: #3a2f16; --err: #ff8a80; --err-soft: #3d1c1a;
-  --shadow: none;
+  --bg: #111418; --surface: #191d23; --surface-2: #232931; --text: #e8ecf1; --muted: #a5afba;
+  --border: #2e3640; --field: #6f7a87;
+  --accent: #6cb8e2; --accent-ink: #0b1620; --accent-soft: #15303f;
+  --ok: #74d39a; --ok-soft: #15301f; --warn: #f2c46b; --warn-soft: #362a12; --err: #ff9a8f; --err-soft: #3b1c19;
+  --focus: #93c5fd; --scrim: rgba(0, 0, 0, .55); --shadow: none;
 }
 @media (prefers-color-scheme: dark) {
   .pdfua.scheme-auto {
-    --bg: #12161b; --surface: #1a2027; --surface-2: #222a33; --text: #e7ebf0; --muted: #9aa5b1; --border: #313b46;
-    --accent: #5db3e0; --accent-ink: #0b1620; --accent-soft: #16303f;
-    --ok: #6fd391; --ok-soft: #173325; --warn: #f0c060; --warn-soft: #3a2f16; --err: #ff8a80; --err-soft: #3d1c1a;
-    --shadow: none;
+    --bg: #111418; --surface: #191d23; --surface-2: #232931; --text: #e8ecf1; --muted: #a5afba;
+    --border: #2e3640; --field: #6f7a87;
+    --accent: #6cb8e2; --accent-ink: #0b1620; --accent-soft: #15303f;
+    --ok: #74d39a; --ok-soft: #15301f; --warn: #f2c46b; --warn-soft: #362a12; --err: #ff9a8f; --err-soft: #3b1c19;
+    --focus: #93c5fd; --scrim: rgba(0, 0, 0, .55); --shadow: none;
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.pdfua { width: 100%; height: 100%; overflow: auto; margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--user-font, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif); container-type: inline-size; }
+.pdfua {
+  position: relative; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); container-type: inline-size;
+  font: 15px/1.5 var(--user-font, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+}
 a { color: var(--accent); }
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-.wrap { max-width: var(--content-max, 1080px); margin: 0 auto; padding: 0 16px; }
-header.app { background: var(--surface); border-bottom: 1px solid var(--border); }
-header.app .wrap { display: flex; align-items: center; gap: 14px; padding-top: 18px; padding-bottom: 18px; }
-.logo { width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 13px; letter-spacing: .02em; flex: none; }
-h1 { font-size: 20px; margin: 0; line-height: 1.2; }
-.tagline { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
-.drop { padding: 28px 20px; text-align: center; border: 2px dashed var(--border); border-radius: var(--radius); background: var(--surface); transition: border-color .15s, background .15s; }
-.drop.over { border-color: var(--accent); background: var(--accent-soft); }
-.drop p { margin: 6px 0; }
-.drop .hint { color: var(--muted); font-size: 13.5px; }
-.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* top bar */
+.topbar { flex: none; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 8px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 650; font-size: 15px; }
+.brand .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logo { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 11px; font-weight: 700; letter-spacing: .02em; flex: none; }
+.stepper { flex: 1; display: flex; justify-content: center; min-width: 0; }
+.stepper ol { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; }
+.stepper li { display: flex; align-items: center; }
+.stepper li + li::before { content: ''; width: 28px; height: 1px; background: var(--field); margin: 0 6px; opacity: .6; }
+.step-btn { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.step-btn .num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; border: 1.5px solid var(--field); background: var(--surface); color: var(--muted); }
+.step-btn .num svg.i { width: 14px; height: 14px; stroke-width: 2.6; }
+.step-btn[aria-current="step"] { color: var(--text); }
+.step-btn[aria-current="step"] .num { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.step-btn.done .num { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.step-btn:disabled { cursor: default; }
+.step-btn:not(:disabled):not([aria-current="step"]):hover { background: var(--surface-2); color: var(--text); }
+.tools { display: flex; align-items: center; gap: 10px; flex: none; }
+.seg { display: inline-flex; border: 1px solid var(--field); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: none; padding: 4px 9px; font: inherit; font-size: 13px; font-weight: 650; color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:not([aria-pressed="true"]):hover { background: var(--surface-2); color: var(--text); }
+
+/* buttons and fields */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--field); background: var(--surface); color: var(--text); padding: 8px 14px; border-radius: var(--radius-sm); font: inherit; font-size: 14.5px; font-weight: 600; line-height: 1.3; cursor: pointer; text-decoration: none; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.btn.primary:hover { filter: brightness(1.07); }
-.btn.small { padding: 5px 10px; font-size: 13.5px; font-weight: 600; }
-.btn[disabled] { opacity: .5; cursor: not-allowed; }
-.btn.link { border: none; background: none; padding: 4px 6px; color: var(--accent); font-weight: 600; }
-.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.space { flex: 1; }
-details.settings { margin-top: 16px; }
-details.settings > summary, details.sub > summary { cursor: pointer; font-weight: 600; padding: 12px 16px; list-style: none; display: flex; align-items: center; gap: 8px; }
-details.settings > summary::-webkit-details-marker, details.sub > summary::-webkit-details-marker { display: none; }
-details > summary .chev { transition: transform .15s; display: inline-block; }
-details[open] > summary .chev { transform: rotate(90deg); }
-.settings .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; padding: 4px 16px 16px; }
-label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--muted); font-weight: 600; }
-label.f input[type=text], label.f select, textarea, input.t, select.t { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; }
-label.c { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 22px 0 10px; }
-.toolbar .count { color: var(--muted); font-size: 14px; }
-.files { display: flex; flex-direction: column; gap: 10px; }
-.file { padding: 12px 14px; }
-.file .head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.file .name { font-weight: 650; word-break: break-word; }
-.file .meta { color: var(--muted); font-size: 13px; }
-.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 650; white-space: nowrap; }
-.pill.ok { background: var(--ok-soft); color: var(--ok); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.err { background: var(--err-soft); color: var(--err); }
-.pill.run, .pill.queue { background: var(--surface-2); color: var(--muted); }
-.progress { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-top: 8px; }
-.progress > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
-.details { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; display: grid; gap: 14px; }
-.details h3 { font-size: 14.5px; margin: 0 0 6px; }
-.details ul { margin: 0; padding-left: 20px; }
-.details li { margin: 2px 0; }
-.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-.kv .box { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
-.kv .box b { display: block; font-size: 12px; color: var(--muted); font-weight: 650; }
-.figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.fig { border: 1px solid var(--border); border-radius: 8px; padding: 8px; display: grid; gap: 6px; background: var(--surface); }
-.fig .thumb { height: 110px; display: grid; place-items: center; background: var(--surface-2); border-radius: 6px; overflow: hidden; color: var(--muted); font-size: 13px; text-align: center; padding: 4px; }
-.fig .thumb img, .fig .thumb canvas { max-width: 100%; max-height: 104px; }
-.fig textarea { width: 100%; min-height: 54px; resize: vertical; }
-.fig .src { font-size: 12px; color: var(--muted); }
-table.checks { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-table.checks th, table.checks td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-table.checks th { color: var(--muted); font-weight: 650; font-size: 12.5px; }
-table.checks td.id { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
-.st-ok { color: var(--ok); font-weight: 650; } .st-err { color: var(--err); font-weight: 650; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.lg { padding: 11px 24px; font-size: 16px; }
+.btn.sm { padding: 5px 10px; font-size: 13.5px; }
+.btn.ghost { border-color: transparent; background: none; color: var(--accent); }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; filter: none; }
+input[type=text], select, textarea { font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 1px solid var(--field); border-radius: var(--radius-sm); padding: 8px 10px; width: 100%; }
+textarea { resize: vertical; line-height: 1.45; }
+input[type=checkbox] { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+label.f { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+label.c { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; }
 .note { font-size: 13.5px; color: var(--muted); }
-.callout { border-radius: 8px; padding: 9px 12px; font-size: 14px; }
-.callout.err { background: var(--err-soft); color: var(--err); }
-.callout.warn { background: var(--warn-soft); color: var(--warn); }
-.lib { padding: 4px 16px 16px; display: grid; gap: 8px; }
-.lib .item { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); padding: 6px 0; }
-.lib .item img { width: 48px; height: 48px; object-fit: contain; background: var(--surface-2); border-radius: 6px; }
-.lib .item .txt { flex: 1; font-size: 14px; }
-footer.app { color: var(--muted); font-size: 13px; padding: 20px 0 40px; border-top: 1px solid var(--border); }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-@container (max-width: 600px) { .file .head { align-items: flex-start; } .toolbar .space { display: none; } }
-ol.outline { margin: 4px 0 0; padding-left: 26px; font-size: 13.5px; max-height: 360px; overflow: auto; }
+
+/* layout */
+.main { flex: 1; min-height: 0; overflow: auto; }
+.wrap { max-width: var(--content-max, 960px); margin: 0 auto; padding: 32px 24px 48px; }
+.step-head { margin-bottom: 24px; }
+.step-head h2 { font-size: 22px; line-height: 1.25; margin: 0 0 6px; }
+.step-head h2:focus { outline: none; }
+.step-head h2:focus-visible { outline: 3px solid var(--focus); }
+.step-head p { color: var(--muted); margin: 0; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 650; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
+.badge svg.i { width: 15px; height: 15px; stroke-width: 2.4; }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.err { background: var(--err-soft); color: var(--err); }
+.callout { border-radius: var(--radius-sm); padding: 10px 14px; font-size: 14px; background: var(--err-soft); color: var(--err); }
+
+/* step 1 */
+.drop { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 40px 24px; border: 2px dashed var(--field); border-radius: var(--radius); background: var(--surface); transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop .up { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.drop .up svg.i { width: 22px; height: 22px; }
+.drop-title { font-size: 17px; font-weight: 650; margin: 14px 0 16px; }
+.drop .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.drop .note { margin: 14px 0 0; }
+.list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 32px 0 10px; }
+.list-head h3 { font-size: 15px; margin: 0; }
+.files { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.file { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.file-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; }
+.file-ic { color: var(--muted); }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-weight: 600; word-break: break-word; }
+.file-meta { font-size: 13px; color: var(--muted); }
+.ov-form { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(160px, 1fr) minmax(160px, 1fr); gap: 12px; padding: 4px 14px 14px; }
+.ov-form .note { grid-column: 1 / -1; margin: 0; }
+.empty { color: var(--muted); font-size: 14px; padding: 4px 0; }
+.actionbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+.actionbar #correct { margin-left: auto; }
+.summary-btn { flex: 1; min-width: 220px; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 8px 10px; margin-left: -10px; border-radius: var(--radius-sm); color: var(--muted); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.summary-btn:hover { background: var(--surface-2); }
+.summary-btn .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-btn .chg { color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+
+/* step 2 */
+.prog { display: grid; gap: 8px; list-style: none; margin: 0 0 8px; padding: 0; }
+.prog li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 260px); align-items: center; gap: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.prog .stage { font-size: 13px; color: var(--muted); }
+.bar { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s; }
+.prog li.ok .bar > i { background: var(--ok); }
+.prog li.err .bar > i { background: var(--err); }
+.review-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px; }
+.review-bar .count { color: var(--muted); font-size: 14px; flex: 1; }
+.figs { display: grid; gap: 14px; list-style: none; margin: 0; padding: 0; }
+.fig { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.fig.accepted { border-color: var(--ok); box-shadow: inset 3px 0 0 var(--ok); }
+.thumb { width: 200px; height: 150px; border-radius: var(--radius-sm); background: var(--surface-2); display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 13px; text-align: center; padding: 6px; }
+.thumb img, .thumb canvas { max-width: 100%; max-height: 138px; object-fit: contain; }
+.fig-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.fig-meta .src { font-weight: 600; }
+.fig textarea { min-height: 66px; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.chip { border: 1px solid var(--field); background: var(--surface); color: var(--text); border-radius: 999px; padding: 3px 11px; font: inherit; font-size: 13px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.fig-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.fig-err { color: var(--err); font-size: 13.5px; font-weight: 600; margin-top: 6px; }
+.show-all { margin-top: 18px; }
+.continue { display: flex; justify-content: flex-end; margin-top: 24px; }
+
+/* step 3 */
+.results-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.results { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.result-main { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; }
+.result-info { flex: 1; min-width: 200px; }
+.result-hints { font-size: 13px; color: var(--muted); }
+.details { border-top: 1px solid var(--border); padding: 18px 16px; display: grid; gap: 22px; }
+.details h4 { font-size: 15px; margin: 0 0 8px; }
+.details ul { margin: 0; padding-left: 20px; }
+.details li { margin: 3px 0; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.kv > div { background: var(--surface-2); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 14px; }
+.kv b { display: block; font-size: 12.5px; color: var(--muted); font-weight: 650; }
+details.x > summary { cursor: pointer; font-weight: 650; padding: 4px 0; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.x > summary::-webkit-details-marker { display: none; }
+details.x > summary .chev { transition: transform .15s; display: inline-block; }
+details.x[open] > summary .chev { transform: rotate(90deg); }
+ol.outline { margin: 8px 0 0; padding-left: 26px; font-size: 14px; max-height: 360px; overflow: auto; }
 ol.outline li { margin: 3px 0; }
-.tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--surface-2); color: var(--muted); margin-right: 4px; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--surface-2); color: var(--muted); margin-right: 4px; }
 .tag-H1, .tag-H2, .tag-H3, .tag-H4, .tag-H5, .tag-H6 { background: var(--accent-soft); color: var(--accent); }
 .tag-Table, .tag-L { background: var(--ok-soft); color: var(--ok); }
 .tag-Figure { background: var(--warn-soft); color: var(--warn); }
-/* step layout: 1 settings, 2 add files, 3 files */
-.setpanel { padding: 14px 16px 12px; margin-bottom: 18px; }
-.sethead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
-.sethead h2, .steph { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
-.steph { margin: 0 0 10px; }
-.sethead .note { margin: 0; }
-.stepno { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; flex: none; }
-.setpanel .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; }
-.setpanel .g2 { grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr); margin-bottom: 14px; }
-.setpanel .g3 { grid-template-columns: repeat(3, minmax(180px, 1fr)); }
-.setpanel .autostart { margin-top: 14px; }
-@container (max-width: 760px) { .setpanel .g2, .setpanel .g3 { grid-template-columns: 1fr; } }
-.setpanel details.more { margin-top: 12px; border-top: 1px solid var(--border); }
-.setpanel details.more > summary { padding: 10px 0; }
-.setpanel details.more .grid { padding: 2px 0 8px; }
-.setfoot { margin-top: 10px; justify-content: flex-end; }
-.prerun { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; display: grid; grid-template-columns: minmax(220px, 2fr) minmax(180px, 1fr) minmax(180px, 1fr) auto; gap: 10px 12px; align-items: end; }
-.prerun label.f { margin: 0; }
-.prerun .note { grid-column: 1 / -1; margin: 0; }
-@container (max-width: 760px) { .prerun { grid-template-columns: 1fr; } }
+.log-tools { margin: 10px 0 6px; }
+table.checks { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.checks th, table.checks td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.checks th { color: var(--muted); font-weight: 650; font-size: 13px; }
+table.checks td.id { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+table.checks.only-failed tr.ok { display: none; }
+.st-ok { color: var(--ok); font-weight: 650; } .st-err { color: var(--err); font-weight: 650; }
+.figlist { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.adjust { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(160px, 1fr) minmax(160px, 1fr) auto; gap: 12px; align-items: end; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* settings drawer */
+.scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s .2s; z-index: 10; }
+.scrim.open { opacity: 1; visibility: visible; transition: opacity .2s; }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 11; width: min(440px, 100%); display: flex; flex-direction: column; background: var(--surface); box-shadow: -10px 0 30px rgba(16, 24, 40, .14); transform: translateX(100%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
+.drawer.open { transform: none; visibility: visible; transition: transform .22s ease; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.drawer-head h2 { font-size: 18px; margin: 0; }
+.drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 20px 20px; }
+.drawer-body > .note { margin: 14px 0 0; }
+.group { padding: 18px 0 6px; border-bottom: 1px solid var(--border); }
+.group:last-child { border-bottom: 0; }
+.group h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 12px; }
+.group label.f { margin-bottom: 14px; }
+.group label.c { margin-bottom: 12px; }
+.group p { font-size: 14px; margin: 0 0 12px; }
+.lib { display: grid; gap: 4px; list-style: none; margin: 0 0 12px; padding: 0; }
+.lib li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.lib img, .lib .ph { width: 44px; height: 44px; object-fit: contain; background: var(--surface-2); border-radius: 6px; flex: none; display: grid; place-items: center; font-size: 11px; color: var(--muted); }
+.lib .txt { flex: 1; min-width: 0; font-size: 14px; word-break: break-word; }
+.drawer-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-top: 1px solid var(--border); }
+
+@container (max-width: 820px) {
+  .step-btn .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .stepper li + li::before { width: 16px; margin: 0 2px; }
+  .brand .name { display: none; }
+}
+@container (max-width: 640px) {
+  .wrap { padding: 24px 16px 40px; }
+  .fig { grid-template-columns: 1fr; }
+  .thumb { width: 100%; }
+  .prog li, .ov-form, .adjust { grid-template-columns: 1fr; }
+  .tools .settings-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .scrim, .bar > i, .drop, details.x > summary .chev { transition: none; }
+}
 </style>
-<section class="pdfua scheme-light" id="root" aria-label="PDF/UA-Korrektur">
-<header class="app" id="appHeader">
-  <div class="wrap">
-    <div class="logo" aria-hidden="true" id="logo">UA</div>
-    <div>
-      <h1 id="appTitle">PDF/UA-Korrektur</h1>
-      <p class="tagline" id="appTagline"></p>
-    </div>
-  </div>
-</header>
-
-<div class="wrap">
-  <section class="panel setpanel" aria-labelledby="set-h" id="setPanel">
-    <div class="sethead">
-      <h2 id="set-h"><span class="stepno" aria-hidden="true">1</span> Einstellungen</h2>
-      <p class="note" id="setNote">Gelten für alle Dateien und bleiben in diesem Browser gespeichert. Pro Datei lässt sich alles vor dem Start überschreiben.</p>
-    </div>
-    <div class="grid g2">
-      <label class="f">Dokumentsprache
-        <select id="optLang">
-          ${LANGS.map(([v, n]) => '<option value="' + v + '">' + n + '</option>').join('')}
-        </select>
-      </label>
-      <label class="f">Dokumenttitel
-        <select id="optTitle">
-          <option value="keep">Vorhandenen Titel behalten, sonst aus dem Inhalt</option>
-          <option value="content">Immer aus dem Inhalt (Hauptüberschrift)</option>
-          <option value="filename">Aus dem Dateinamen</option>
-        </select>
-      </label>
-    </div>
-    <div class="grid g3">
-      <label class="f">Alternativtext für Logos
-        <input type="text" id="optLogoAlt" value="Logo">
-      </label>
-      <label class="f">Alternativtext für Bilder
-        <input type="text" id="optImgAlt" value="Abbildung">
-      </label>
-      <label class="f">Alternativtext für Diagramme
-        <input type="text" id="optChartAlt" value="Diagramm">
-      </label>
-    </div>
-    <label class="c autostart"><input type="checkbox" id="optAutostart"> Dateien sofort nach dem Hinzufügen verarbeiten (ohne Anpassung pro Datei)</label>
-    <details class="sub more">
-      <summary><span class="chev" aria-hidden="true">▸</span> Weitere Einstellungen</summary>
-      <div class="grid">
-        <label class="f">Zusatz im Dateinamen
-          <input type="text" id="optSuffix" value="_barrierefrei">
-        </label>
-        <label class="f">Bereits getaggte PDFs
-          <select id="optExisting">
-            <option value="auto">Automatisch: gute Tags behalten, fehlerhafte neu erstellen</option>
-            <option value="retag">Tags immer neu erstellen</option>
-            <option value="keep">Vorhandene Tags immer behalten (nur reparieren)</option>
-          </select>
-        </label>
-        <label class="c"><input type="checkbox" id="optBookmarks" checked> Lesezeichen aus Überschriften erstellen (wenn keine vorhanden)</label>
-        <label class="c"><input type="checkbox" id="optRunning" checked> Wiederkehrende Kopf-/Fusszeilen als Artefakt markieren</label>
+<section class="pdfua scheme-light" id="root" lang="de">
+  <header class="topbar" id="topbar">
+    <div class="brand" id="brand"><span class="logo" id="logo" aria-hidden="true">UA</span><span class="name" id="appName"></span></div>
+    <nav class="stepper" id="stepper" data-i18n-aria="stepsNav"><ol>${stepButton(1)}${stepButton(2)}${stepButton(3)}</ol></nav>
+    <div class="tools">
+      <div class="seg" role="group" id="langSwitch" data-i18n-aria="uiLangGroup">
+        <button type="button" data-lang="de" lang="de" aria-label="Deutsch">DE</button><button type="button" data-lang="fr" lang="fr" aria-label="Français">FR</button><button type="button" data-lang="it" lang="it" aria-label="Italiano">IT</button>
       </div>
-    </details>
-    <div class="row setfoot"><button class="btn small" id="resetSettings" type="button">Standardeinstellungen wiederherstellen</button></div>
-  </section>
-
-  <section aria-labelledby="add-h">
-    <h2 id="add-h" class="steph"><span class="stepno" aria-hidden="true" data-step="2">2</span> Dateien hinzufügen</h2>
-    <div class="drop" id="drop">
-      <p><strong>PDF-Dateien hierher ziehen</strong></p>
-      <p class="row" style="justify-content:center">
-        <button class="btn primary" id="pick" type="button">Dateien auswählen …</button>
-        <button class="btn" id="pickDir" type="button">Ordner auswählen …</button>
-      </p>
-      <p class="hint" id="dropHint">Mehrere Dateien möglich. Die Dateien erscheinen zuerst in der Liste – dort können Sie pro Datei Titel, Sprache und Logo-Text anpassen und dann die Verarbeitung starten.</p>
-      <input type="file" id="file" accept=".pdf,application/pdf" multiple hidden>
-      <input type="file" id="dir" webkitdirectory multiple hidden>
+      <button type="button" class="btn sm" id="openSettings" aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false">${ICON.sliders}<span class="settings-lbl" data-i18n="settings"></span></button>
     </div>
-  </section>
+  </header>
 
-  <section aria-labelledby="list-h">
-    <div class="toolbar">
-      <h2 id="list-h" class="steph" style="margin:0"><span class="stepno" aria-hidden="true" data-step="3">3</span> Dateien</h2>
-      <span class="count" id="count" aria-live="polite"></span>
-      <span class="space"></span>
-      <button class="btn small primary" id="startAll" type="button" disabled>Verarbeitung starten</button>
-      <button class="btn small" id="zipAll" type="button" disabled>Alle herunterladen (ZIP)</button>
-      <button class="btn small" id="csvAll" type="button" disabled>Übersicht (CSV)</button>
-      <button class="btn small" id="rerunAll" type="button" disabled>Alle neu verarbeiten</button>
-      <button class="btn small" id="clearAll" type="button" disabled>Liste leeren</button>
+  <div class="main" id="main">
+    <div class="wrap">
+      <section class="step" id="step1" aria-labelledby="s1h">
+        <div class="step-head"><h2 id="s1h" tabindex="-1" data-i18n="s1Title"></h2><p id="tagline"></p></div>
+        <div class="drop" id="drop">
+          <span class="up">${ICON.upload}</span>
+          <p class="drop-title" data-i18n="dropTitle"></p>
+          <div class="row"><button class="btn primary" id="pick" type="button" data-i18n="pickFiles"></button><button class="btn" id="pickDir" type="button" data-i18n="pickFolder"></button></div>
+          <p class="note" data-i18n="dropHint"></p>
+          <input type="file" id="file" accept=".pdf,application/pdf" multiple hidden>
+          <input type="file" id="dir" webkitdirectory multiple hidden>
+        </div>
+        <div class="list-head"><h3 id="filesHeading"></h3><button class="btn ghost sm" id="clearAll" type="button" data-i18n="clearList"></button></div>
+        <ul class="files" id="fileList" aria-labelledby="filesHeading"></ul>
+        <p class="empty" id="empty" data-i18n="noFiles"></p>
+        <div class="actionbar">
+          <button type="button" class="summary-btn" id="summaryBtn" aria-haspopup="dialog" aria-controls="drawer">${ICON.sliders}<span class="txt" id="summaryTxt"></span><span class="chg" data-i18n="summaryChange"></span></button>
+          <button type="button" class="btn primary lg" id="correct" disabled></button>
+        </div>
+      </section>
+
+      <section class="step" id="step2" aria-labelledby="s2h" hidden>
+        <div class="step-head"><h2 id="s2h" tabindex="-1"></h2><p id="s2note"></p></div>
+        <ul class="prog" id="progList"></ul>
+        <div id="review" hidden>
+          <p class="note" data-i18n="reviewHelp"></p>
+          <div class="review-bar"><span class="count" id="reviewCount"></span><button class="btn" id="acceptAll" type="button" data-i18n="acceptAll"></button></div>
+          <ul class="figs" id="figList"></ul>
+          <label class="c show-all" id="showAllWrap"><input type="checkbox" id="showAll"><span id="showAllLbl"></span></label>
+          <div class="continue"><button class="btn primary lg" id="continue" type="button"></button></div>
+        </div>
+        <datalist id="libTexts"></datalist>
+      </section>
+
+      <section class="step" id="step3" aria-labelledby="s3h" hidden>
+        <div class="step-head"><h2 id="s3h" tabindex="-1" data-i18n="s3Title"></h2><p id="s3summary"></p></div>
+        <div class="results-bar">
+          <button class="btn primary" id="zipAll" type="button">${ICON.download}<span data-i18n="downloadAll"></span></button>
+          <button class="btn" id="csvAll" type="button" data-i18n="csv"></button>
+          <button class="btn" id="rerunAll" type="button" data-i18n="rerunAll"></button>
+          <button class="btn ghost" id="addMore" type="button" data-i18n="addMore"></button>
+        </div>
+        <ul class="results" id="resultList"></ul>
+      </section>
     </div>
-    <div class="files" id="files"></div>
-    <p class="note" id="empty">Noch keine Dateien. Ziehen Sie PDFs in das Feld oben oder wählen Sie sie aus.</p>
-  </section>
-
-  <details class="settings panel" id="libBox">
-    <summary><span class="chev" aria-hidden="true">▸</span> Gespeicherte Alternativtexte <span id="libCount" class="note"></span></summary>
-    <div class="lib" id="lib"></div>
-  </details>
-</div>
-
-<footer class="app" id="appFooter">
-  <div class="wrap">
-    <p><strong>Was das Programm automatisch korrigiert:</strong> Tags/Strukturbaum (Überschriften, Absätze, Listen, Tabellen mit Kopfzellen – auch über mehrere Seiten –, Abbildungen, Diagramme, Formeln, Fussnoten, Links, Formularfelder), Lesereihenfolge, Artefakte (Kopf-/Fusszeilen, Seitenzahlen, wiederholte Tabellenköpfe, Hintergründe, unsichtbarer Text), Unicode-Zuordnung der Schriften, Einbettung fehlender Schriften, Glyphenbreiten, Dokumentsprache, Titel, Titelanzeige, Lesezeichen, XMP-Metadaten mit PDF/UA-Kennung, Tab-Reihenfolge und Beschreibungen von Links, Formularfeldern und Anmerkungen.</p>
-    <p><strong>Was eine Person prüfen sollte:</strong> ob die Alternativtexte von Bildern, Diagrammen und Formeln den Inhalt treffend beschreiben und ob die erkannte Struktur inhaltlich stimmt. Die integrierte Prüfung deckt die maschinell prüfbaren Regeln von PDF/UA-1 ab (Regelnummern wie bei veraPDF). Gescannte PDFs ohne Text brauchen zuerst eine Texterkennung (OCR); sie werden nicht als PDF/UA gekennzeichnet.</p>
   </div>
-</footer>
 
-<div class="sr-only" aria-live="polite" id="live"></div>
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <div class="drawer-head"><h2 id="drawerTitle" data-i18n="drawerTitle"></h2><button class="btn ghost sm" id="closeSettings" type="button">${ICON.close}<span data-i18n="close"></span></button></div>
+    <div class="drawer-body">
+      <p class="note" id="drawerNote"></p>
+      <section class="group" aria-labelledby="g1"><h3 id="g1" data-i18n="grpDocument"></h3>
+        <label class="f"><span data-i18n="optLang"></span><select id="optLang"></select></label>
+        <label class="f"><span data-i18n="optTitle"></span><select id="optTitle"></select></label>
+      </section>
+      <section class="group" aria-labelledby="g2"><h3 id="g2" data-i18n="grpAlt"></h3>
+        <label class="f"><span data-i18n="optLogoAlt"></span><input type="text" id="optLogoAlt"></label>
+        <label class="f"><span data-i18n="optImgAlt"></span><input type="text" id="optImgAlt"></label>
+        <label class="f"><span data-i18n="optChartAlt"></span><input type="text" id="optChartAlt"></label>
+      </section>
+      <section class="group" aria-labelledby="g3"><h3 id="g3" data-i18n="grpProcessing"></h3>
+        <label class="f"><span data-i18n="optSuffix"></span><input type="text" id="optSuffix"></label>
+        <label class="f"><span data-i18n="optExisting"></span><select id="optExisting"></select></label>
+        <label class="c"><input type="checkbox" id="optBookmarks"><span data-i18n="optBookmarks"></span></label>
+        <label class="c"><input type="checkbox" id="optRunning"><span data-i18n="optRunning"></span></label>
+        <label class="c"><input type="checkbox" id="optAutostart"><span data-i18n="optAutostart"></span></label>
+      </section>
+      <section class="group" id="libGroup" aria-labelledby="g4"><h3 id="g4"><span data-i18n="grpLibrary"></span> <span id="libCount"></span></h3><div id="lib"></div></section>
+      <section class="group" id="aboutGroup" aria-labelledby="g5"><h3 id="g5" data-i18n="grpAbout"></h3>
+        <p><strong data-i18n="aboutAutoLabel"></strong> <span data-i18n="aboutAuto"></span></p>
+        <p><strong data-i18n="aboutPersonLabel"></strong> <span data-i18n="aboutPerson"></span></p>
+      </section>
+    </div>
+    <div class="drawer-foot"><button class="btn" id="resetSettings" type="button" data-i18n="resetSettings"></button><button class="btn primary" id="drawerDone" type="button" data-i18n="done"></button></div>
+  </aside>
+  <div class="sr-only" aria-live="polite" id="live"></div>
 </section>
 `;
 
@@ -7319,6 +7934,10 @@ ol.outline li { margin: 3px 0; }
             const m = h.match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
             return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
         }
+        function luminance(rgb) {
+            const c = rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        }
         function bytesToBase64(u8) {
             let s = '';
             for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
@@ -7331,8 +7950,16 @@ ol.outline li { margin: 3px 0; }
             const t = e.dataTransfer && e.dataTransfer.types;
             return !!t && Array.prototype.indexOf.call(t, 'Files') !== -1;
         }
+        // bits that differ between two 64-bit average hashes ('p:<16 hex>-WxH')
+        function hashDistance(a, b) {
+            const x = /^p:([0-9a-f]{16})/.exec(a || ''); const y = /^p:([0-9a-f]{16})/.exec(b || '');
+            if (!x || !y) return 64;
+            let d = 0;
+            for (let i = 0; i < 16; i++) { let v = parseInt(x[1][i], 16) ^ parseInt(y[1][i], 16); while (v) { d += v & 1; v >>= 1; } }
+            return d;
+        }
 
-        /** The user interface of PDF-UA-Korrektur.html, bound to one widget instance and its shadow root. */
+        /** One widget instance: the user interface in its shadow root, bound to the engine. */
         function createApp(host, shadow) {
             const $ = (id) => shadow.getElementById(id);
             const P = () => host._props;
@@ -7342,14 +7969,40 @@ ol.outline li { margin: 3px 0; }
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
             };
 
+            // ------------------------------------------------------------------ interface language
+            const LANG_KEY = 'pdfua-ui-lang-v1';
+            let lang = 'de';
+            const tx = (key) => (I18N[lang] && I18N[lang][key] !== undefined ? I18N[lang][key] : I18N.de[key]);
+            const t = (key, ...args) => { const v = tx(key); return typeof v === 'function' ? v(...args) : v; };
+            // engine messages are German: mark them for screen readers when the interface is not
+            const de = (s) => (lang === 'de' ? esc(s) : '<span lang="de">' + esc(s) + '</span>');
+            const langName = (v) => tx('langs')[v] || v;
+            function rememberLang() { return P().rememberSettings && P().showLanguageSwitch; }
+            function initialLang() {
+                const stored = rememberLang() ? store.get(LANG_KEY, null) : null;
+                if (UI_LANGS.indexOf(stored) !== -1) return stored;
+                return UI_LANGS.indexOf(P().uiLanguage) !== -1 ? P().uiLanguage : 'de';
+            }
+            // texts left at the program's (German) default follow the interface language
+            const propText = (key) => (P()[key] === PROPS[key][1] ? t(key) : P()[key]);
+
             // ------------------------------------------------------------------ settings
             // Defaults come from the widget properties (story design). Changes made in the widget are kept
             // as overrides of those defaults and, if allowed, remembered in this browser.
             const OVERRIDES_KEY = 'pdfua-sac-settings-v1'; const LIB_KEY = 'pdfua-alt-library-v1';
             const fields = { optLang: 'lang', optTitle: 'title', optLogoAlt: 'logoAlt', optImgAlt: 'imgAlt', optChartAlt: 'chartAlt', optSuffix: 'suffix', optBookmarks: 'bookmarks', optRunning: 'running', optExisting: 'existing', optAutostart: 'autostart' };
-            const langName = (v) => { const l = LANGS.find((x) => x[0] === v); return l ? l[1] : v; };
             let DEFAULTS = {}; let overrides = {};
             function fieldOf(k) { return Object.keys(fields).find((id) => fields[id] === k); }
+            function fillSelects() {
+                const fill = (id, entries) => {
+                    const el = $(id); const v = el.value;
+                    el.innerHTML = entries.map(([value, label]) => '<option value="' + esc(value) + '">' + esc(label) + '</option>').join('');
+                    if (v) el.value = v;
+                };
+                fill('optLang', LANG_CODES.map((c) => [c, langName(c)]));
+                fill('optTitle', ['keep', 'content', 'filename'].map((m) => [m, tx('titleModes')[m]]));
+                fill('optExisting', ['auto', 'retag', 'keep'].map((m) => [m, tx('existingModes')[m]]));
+            }
             function validValue(k, v) {
                 const el = $(fieldOf(k));
                 if (el.type === 'checkbox') return typeof v === 'boolean';
@@ -7389,14 +8042,10 @@ ol.outline li { margin: 3px 0; }
             }
             Object.keys(fields).forEach((id) => $(id).addEventListener('change', () => { recordSetting(fields[id], settings()[fields[id]]); settingsChanged(); }));
             function settingsChanged() {
-                const where = P().showSettings ? 'mit den Einstellungen oben' : 'mit den Standard-Einstellungen';
-                $('dropHint').textContent = settings().autostart
-                    ? 'Mehrere Dateien möglich. Die Verarbeitung startet sofort ' + where + '.'
-                    : 'Mehrere Dateien möglich. Die Dateien erscheinen zuerst in der Liste – dort können Sie pro Datei Titel, Sprache und Logo-Text anpassen und dann die Verarbeitung starten.';
-                files.forEach((f) => { if (f.status === 'ready') renderFile(f); }); // placeholders show the current settings
+                renderSummary(); renderFiles();
             }
             function resetSettings() {
-                overrides = {}; saveSettings(); applySettings(DEFAULTS); settingsChanged(); announce('Standardeinstellungen wiederhergestellt.');
+                overrides = {}; saveSettings(); applySettings(DEFAULTS); settingsChanged(); announce(t('annReset'));
             }
 
             let library = store.get(LIB_KEY, {});
@@ -7436,28 +8085,34 @@ ol.outline li { margin: 3px 0; }
                         setTimeout(() => {
                             if (destroyed) { resolve(); return; }
                             let engine = null;
-                            try { engine = inlineEngine(); } catch (e) { onMessage({ id, type: 'error', message: 'Die Verarbeitung konnte nicht gestartet werden: ' + ((e && e.message) || e) }); resolve(); return; }
+                            try { engine = inlineEngine(); } catch (e) { onMessage({ id, type: 'error', message: t('engineStartError', (e && e.message) || String(e)) }); resolve(); return; }
                             engine.handleJob(msg, (m) => { onMessage(m); if (m.type !== 'progress') resolve(); });
                         }, 0);
                     }));
                 }
             }
 
-            // ------------------------------------------------------------------ files
+            // ------------------------------------------------------------------ files and processing
             const files = []; let nextId = 1; let running = false; let processedSinceIdle = false; let lastDone = null;
+            let step = 1; let runId = 0; let reviewRun = false;
+            const busy = () => files.some((f) => f.status === 'running' || f.status === 'queued');
+            const doneFiles = () => files.filter((f) => f.status === 'done');
+            const hasResults = () => files.some((f) => f.status === 'done' || f.status === 'error');
             function outName(name) {
                 const s = settings().suffix || '';
                 return name.replace(/\.pdf$/i, '') + s + '.pdf';
             }
             async function addFiles(list) {
                 const arr = Array.from(list).filter((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
-                if (!arr.length) { announce('Keine PDF-Dateien gefunden.'); return; }
+                if (!arr.length) { announce(t('annNoPdf')); return; }
+                const auto = settings().autostart;
                 for (const f of arr) {
                     const buf = await f.arrayBuffer();
-                    const item = { id: nextId++, name: f.name, size: f.size, bytes: buf, status: settings().autostart ? 'queued' : 'ready', overrides: {}, altOverrides: {}, open: false };
-                    files.push(item); renderFile(item);
+                    files.push({ id: nextId++, name: f.name, size: f.size, bytes: buf, status: auto ? 'queued' : 'ready', overrides: {}, altOverrides: {}, open: false, ovOpen: false });
                 }
-                updateToolbar(); host._fire('onFilesAdded'); pump();
+                renderFiles(); updateStepper(); announce(t('annAdded', arr.length)); host._fire('onFilesAdded');
+                if (auto) startRun();
+                else if (step !== 1) goStep(1);
             }
             function buildOpts(f) {
                 const s = settings();
@@ -7474,212 +8129,111 @@ ol.outline li { margin: 3px 0; }
                 else if (s.title === 'filename') o.title = f.name.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ').trim();
                 return o;
             }
+            /** "Korrigieren": all files that are ready */
+            function correct() {
+                files.forEach((f) => { if (f.status === 'ready') f.status = 'queued'; });
+                startRun();
+            }
+            function queue(f) { f.status = 'queued'; f.result = null; f.open = false; }
+            function startRun() {
+                const queued = files.filter((f) => f.status === 'queued');
+                if (!queued.length) return;
+                runId++;
+                queued.forEach((f) => { f.run = runId; f.stage = null; f.frac = 0; });
+                goStep(2);
+                announce(t('annStart', queued.length));
+                pump();
+            }
             function pump() {
                 if (running) return;
                 const f = files.find((x) => x.status === 'queued');
                 if (!f) {
-                    updateToolbar();
-                    if (processedSinceIdle) { processedSinceIdle = false; host._fire('onQueueFinished'); }
+                    renderFiles(); updateStepper();
+                    if (processedSinceIdle) { processedSinceIdle = false; runFinished(); }
                     return;
                 }
-                running = true; f.status = 'running'; f.stage = 'Start'; f.frac = 0.02; renderFile(f);
+                running = true; f.status = 'running'; f.stage = 'Start'; f.frac = 0.02; f.run = f.run || runId; renderProgress();
                 runJob(f.id, f.bytes, buildOpts(f), (m) => {
-                    if (m.type === 'progress') { f.stage = m.stage; f.frac = m.frac; renderProgress(f); return; }
+                    if (m.type === 'progress') { f.stage = m.stage; f.frac = m.frac; updateProgressRow(f); return; }
                     pending.delete(f.id);
                     if (m.type === 'done') {
                         f.result = { bytes: m.bytes, report: m.report };
                         f.status = m.bytes ? 'done' : 'error';
-                        if (!m.bytes) f.error = (m.report.errors[0] && m.report.errors[0].msg) || 'Unbekannter Fehler';
+                        if (!m.bytes) f.error = (m.report.errors[0] && m.report.errors[0].msg) || t('unknownError');
                         const c = m.report.checks;
-                        announce(f.name + ': ' + (m.bytes ? (c && c.passed ? 'fertig, PDF/UA-Prüfung bestanden.' : 'fertig, mit offenen Punkten.') : 'Fehler.'));
-                    } else { f.status = 'error'; f.error = m.message; announce(f.name + ': Fehler bei der Verarbeitung.'); }
-                    renderFile(f); running = false; updateToolbar();
+                        announce(m.bytes ? (c && c.passed ? t('annFileOk', f.name) : t('annFileOpen', f.name)) : t('annFileError', f.name));
+                    } else { f.status = 'error'; f.error = m.message; announce(t('annFileError', f.name)); }
+                    running = false; updateProgressRow(f);
                     processedSinceIdle = true; lastDone = f; host._fire('onFileProcessed');
                     pump();
                 });
             }
+            /** after a run: review the alternative texts if any need a person, otherwise go straight to the downloads */
+            function runFinished() {
+                host._fire('onQueueFinished');
+                const fromReview = reviewRun; reviewRun = false;
+                const n = pendingReview().length;
+                renderResults();
+                if (step !== 2) return; // the user is working elsewhere; the stepper shows what is ready
+                if (n && !fromReview) { renderStep2(); announce(t('annReview', n)); }
+                else { goStep(3); announce(t('annDone', doneFiles().length)); }
+            }
 
-            // ------------------------------------------------------------------ rendering
-            function announce(t) { $('live').textContent = t; }
-            function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
-            function checkSummary(c) { if (!c) return null; const ok = c.items.filter((i) => i.ok).length; return { ok, total: c.items.length, passed: c.passed }; }
-            function statusPill(f) {
-                if (f.status === 'ready') return '<span class="pill queue">Bereit</span>';
-                if (f.status === 'queued') return '<span class="pill queue">Wartet</span>';
-                if (f.status === 'running') return '<span class="pill run">In Arbeit …</span>';
-                if (f.status === 'error') return '<span class="pill err">Fehler</span>';
-                const r = f.result.report; const cs = checkSummary(r.checks);
-                if (r.errors.some((e) => e.code === 'no-text')) return '<span class="pill err" title="Die Datei enthält nur Bilder von Text">Texterkennung (OCR) nötig</span>';
-                if (r.errors.length) return '<span class="pill warn">Mit Einschränkungen</span>';
-                const altTodo = (r.figures || []).filter((x) => !x.decorative && (x.source === 'default' || x.source === 'logo' || x.source === 'formula')).length;
-                const altPill = altTodo ? ' <span class="pill warn" title="Automatisch gesetzte Alternativtexte bitte prüfen">Alt-Texte prüfen (' + altTodo + ')</span>' : '';
-                if (cs && cs.passed) return '<span class="pill ok">✓ PDF/UA-Prüfung bestanden</span>' + altPill;
-                return '<span class="pill warn">' + (cs ? (cs.total - cs.ok) + ' Regel(n) offen' : 'Fertig') + '</span>';
-            }
-            function renderFile(f) {
-                if (!f.el) {
-                    f.el = document.createElement('article'); f.el.className = 'file panel'; f.el.setAttribute('aria-label', f.name);
-                    $('files').appendChild(f.el);
-                }
-                const r = f.result && f.result.report;
-                const pages = r && r.info.pages ? r.info.pages + ' Seite' + (r.info.pages === 1 ? '' : 'n') + ' · ' : '';
-                f.el.innerHTML = '<div class="head">' +
-                    '<div style="flex:1;min-width:200px"><div class="name">' + esc(f.name) + '</div><div class="meta">' + pages + fmtSize(f.size) + (f.status === 'done' ? ' → ' + fmtSize(f.result.bytes.byteLength) : '') + '</div></div>' +
-                    statusPill(f) +
-                    '<div class="row">' +
-                    (f.status === 'ready' ? '<button class="btn small primary" data-act="start" type="button" aria-label="' + esc(f.name) + ' starten">Starten</button>' : '') +
-                    (f.status === 'done' ? '<button class="btn small primary" data-act="dl" type="button">Herunterladen</button><button class="btn small" data-act="report" type="button">Prüfbericht</button>' : '') +
-                    (r ? '<button class="btn small" data-act="toggle" type="button" aria-expanded="' + (f.open ? 'true' : 'false') + '">' + (f.open ? 'Details ausblenden' : 'Details') + '</button>' : '') +
-                    '<button class="btn small link" data-act="remove" type="button" aria-label="' + esc(f.name) + ' entfernen">Entfernen</button>' +
-                    '</div></div>' +
-                    (f.status === 'running' ? '<div class="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round((f.frac || 0) * 100) + '"><i style="width:' + Math.round((f.frac || 0) * 100) + '%"></i></div><div class="meta" data-stage>' + esc(stageText(f.stage)) + '</div>' : '') +
-                    (f.status === 'ready' ? overrideForm(f, null) : '') +
-                    (f.status === 'error' && !r ? '<div class="callout err" style="margin-top:10px">' + esc(f.error || 'Fehler') + '</div>' : '') +
-                    (r && f.open ? detailsHTML(f, r) : '');
-                bindCard(f);
-                if (r && f.open) drawThumbs(f, r);
-                $('empty').hidden = files.length > 0;
-            }
-            /** per-file title / language / logo text; before the run (info = null) or to re-create a processed file */
-            function overrideForm(f, info) {
-                const s = settings(); const ov = f.overrides; const pre = !info;
-                const titlePh = s.title === 'filename' ? 'aus dem Dateinamen' : (s.title === 'content' ? 'automatisch aus dem Inhalt' : 'vorhandener Titel oder aus dem Inhalt');
-                const titleVal = pre ? (ov.title || '') : (ov.title || info.title || '');
-                return '<div class="prerun">' +
-                    (pre ? '<p class="note">Optional – leer lassen, um ' + (P().showSettings ? 'die Einstellungen oben' : 'die Standard-Einstellungen') + ' zu verwenden.</p>' : '') +
-                    '<label class="f">Titel<input class="t" type="text" data-ov="title" value="' + esc(titleVal) + '" placeholder="' + esc(titlePh) + '"></label>' +
-                    '<label class="f">Sprache<select class="t" data-ov="lang"><option value=""' + (!ov.lang ? ' selected' : '') + '>wie Einstellungen (' + esc(langName(s.lang)) + ')</option>' +
-                    LANGS.map(([v, n]) => '<option value="' + v + '"' + (ov.lang === v ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></label>' +
-                    '<label class="f">Alternativtext für Logos<input class="t" type="text" data-ov="logoAlt" value="' + esc(ov.logoAlt || '') + '" placeholder="' + esc(s.logoAlt || 'Logo') + '"></label>' +
-                    (pre ? '<span></span>' : '<button class="btn small" data-act="rerun" type="button">Neu erstellen</button>') +
-                    '</div>';
-            }
-            function readOverrides(f) {
-                const q = (k) => f.el.querySelector('[data-ov="' + k + '"]');
-                const t = q('title') ? q('title').value.trim() : ''; const l = q('lang') ? q('lang').value : ''; const lg = q('logoAlt') ? q('logoAlt').value.trim() : '';
-                const computed = f.result && f.result.report.info.title;
-                const o = {};
-                if (t && t !== computed) o.title = t; else if (t && f.overrides.title) o.title = f.overrides.title;
-                if (l) o.lang = l;
-                if (lg) o.logoAlt = lg;
-                f.overrides = o;
-            }
-            function stageText(s) { return ({ Start: 'Wird gelesen …', Analyse: 'Inhalt wird analysiert …', Layout: 'Struktur wird erkannt …', Tags: 'Tags werden geschrieben …', Schriften: 'Schriften werden repariert …', Speichern: 'Wird gespeichert …', 'Prüfung': 'PDF/UA-Prüfung …', Fertig: 'Fertig' })[s] || s || ''; }
-            function renderProgress(f) {
-                if (!f.el) return;
-                const bar = f.el.querySelector('.progress');
-                if (!bar) { renderFile(f); return; }
-                const pct = Math.round((f.frac || 0) * 100);
-                bar.setAttribute('aria-valuenow', pct); bar.firstChild.style.width = pct + '%';
-                const st = f.el.querySelector('[data-stage]'); if (st) st.textContent = stageText(f.stage);
-            }
-            function figGroups(r) {
+            // ------------------------------------------------------------------ alternative texts to review
+            const reviewState = new Map(); // image key -> { alt, decorative, accepted }
+            const thumbs = new Map();      // image key -> drawn preview (canvas or img), for the library thumbnail
+            let showAll = false;
+            const needsReview = (fg) => !fg.decorative && (fg.source === 'default' || fg.source === 'logo' || fg.source === 'formula');
+            const figKey = (f, fg) => fg.hash || (f.id + ':p' + fg.page + ':' + fg.bbox.join(','));
+            /** figures of all processed files, one entry per image (the same logo in five files is one entry) */
+            function figureGroups() {
                 const map = new Map();
-                for (const fg of r.figures || []) {
-                    const k = fg.hash || ('p' + fg.page + ':' + fg.bbox.join(','));
-                    if (!map.has(k)) map.set(k, Object.assign({ key: k, count: 0, pages: [] }, fg));
-                    const g = map.get(k); g.count++; if (!g.pages.includes(fg.page + 1)) g.pages.push(fg.page + 1);
-                }
+                files.forEach((f) => {
+                    if (f.status !== 'done') return;
+                    (f.result.report.figures || []).forEach((fg) => {
+                        const k = figKey(f, fg);
+                        if (!map.has(k)) map.set(k, Object.assign({ key: k, occ: [], needs: false }, fg));
+                        const g = map.get(k);
+                        let o = g.occ.find((x) => x.file === f);
+                        if (!o) { o = { file: f, pages: [], fig: fg }; g.occ.push(o); }
+                        if (o.pages.indexOf(fg.page + 1) === -1) o.pages.push(fg.page + 1);
+                        if (needsReview(fg)) g.needs = true;
+                        if (!g.thumb && fg.thumb) g.thumb = fg.thumb;
+                        if (!g.jpeg && fg.jpeg) g.jpeg = fg.jpeg;
+                    });
+                });
                 return Array.from(map.values());
             }
-            function detailsHTML(f, r) {
-                const cs = checkSummary(r.checks); const before = r.before ? checkSummary(r.before) : null;
-                const info = r.info || {};
-                let h = '<div class="details">';
-                for (const e of r.errors) h += '<div class="callout err">' + esc(e.msg) + '</div>';
-                h += '<div class="kv">' +
-                    '<div class="box"><b>Titel</b>' + esc(info.title || '–') + '</div>' +
-                    '<div class="box"><b>Sprache</b>' + esc(info.lang || '–') + '</div>' +
-                    '<div class="box"><b>Automatische PDF/UA-Prüfung</b>' + (cs ? (before ? 'vorher ' + before.ok + '/' + before.total + ' → ' : '') + 'nachher ' + cs.ok + '/' + cs.total + ' Regeln erfüllt' : '–') + '</div>' +
-                    '<div class="box"><b>Erkannte Struktur</b>' + structSummary(r) + '</div></div>';
-                // per-file overrides
-                h += '<div><h3>Titel, Sprache und Logo-Text anpassen</h3>' + overrideForm(f, info) + '</div>';
-                const groups = figGroups(r);
-                if (groups.length) {
-                    h += '<div><h3>Abbildungen und Alternativtexte (' + groups.length + ')</h3><p class="note" style="margin:0 0 8px">Beschreiben Sie, was das Bild aussagt. Gespeicherte Texte werden bei allen künftigen Dateien mit demselben Bild automatisch verwendet. „Dekorativ“ blendet das Bild für Screenreader aus.</p><div class="figs">';
-                    groups.forEach((g, i) => {
-                        const ov = f.altOverrides[g.key] || library[g.key] || (g.phash ? library[g.phash] : null);
-                        const alt = ov && ov.alt !== undefined ? ov.alt : g.alt;
-                        const dec = ov ? !!ov.decorative : !!g.decorative;
-                        const src = ov ? 'gespeichert' : ({ default: 'automatisch', logo: 'automatisch (Logo)', settings: 'aus Einstellungen', caption: 'aus Bildunterschrift', formula: 'automatisch gelesen', tags: 'aus vorhandenen Tags', library: 'gespeichert' }[g.source] || g.source);
-                        h += '<div class="fig" data-key="' + esc(g.key) + '"><div class="thumb" data-thumb="' + i + '">' + (g.formula ? 'Formel' : g.vector ? 'Vektorgrafik / Diagramm' : 'Bild') + '</div>' +
-                            '<div class="src">Seite ' + g.pages.slice(0, 6).join(', ') + (g.pages.length > 6 ? ' …' : '') + (g.count > 1 ? ' · ' + g.count + '×' : '') + ' · ' + esc(src) + '</div>' +
-                            '<label class="sr-only" for="alt-' + f.id + '-' + i + '">Alternativtext</label><textarea id="alt-' + f.id + '-' + i + '" data-alt>' + esc(alt) + '</textarea>' +
-                            (g.formula ? '' : '<label class="c"><input type="checkbox" data-dec' + (dec ? ' checked' : '') + '> Dekorativ (kein Alternativtext)</label>') + '</div>';
-                    });
-                    h += '</div><div class="row" style="margin-top:8px"><button class="btn small primary" data-act="saveAlts" type="button">Speichern und neu erstellen</button></div></div>';
+            function stateOf(g) {
+                if (!reviewState.has(g.key)) {
+                    const lib = library[g.key] || (g.phash ? library[g.phash] : null);
+                    reviewState.set(g.key, { alt: lib && lib.alt !== undefined ? lib.alt : (g.alt || ''), decorative: lib ? !!lib.decorative : !!g.decorative, accepted: false });
                 }
-                if (r.outline && r.outline.length) {
-                    const names = { H1: 'Überschrift 1', H2: 'Überschrift 2', H3: 'Überschrift 3', H4: 'Überschrift 4', H5: 'Überschrift 5', H6: 'Überschrift 6', P: 'Absatz', Table: 'Tabelle', L: 'Liste', Figure: 'Abbildung', Formula: 'Formel', Note: 'Fussnote', Link: 'Link', Form: 'Formularfeld', Annot: 'Anmerkung' };
-                    h += '<details class="sub"><summary><span class="chev" aria-hidden="true">▸</span> Erkannte Struktur in Lesereihenfolge (' + r.outline.length + (r.outline.length >= 400 ? '+' : '') + ' Elemente)</summary><ol class="outline">' +
-                        r.outline.map((o) => '<li><span class="tag tag-' + esc(o.type) + '">' + esc(names[o.type] || o.type) + '</span> ' + esc(o.text) + ' <span class="note">S. ' + o.page + '</span></li>').join('') + '</ol></details>';
-                }
-                if (r.fixes.length) h += '<div><h3>Durchgeführte Korrekturen</h3><ul>' + r.fixes.map((x) => '<li>' + esc(x.msg) + '</li>').join('') + '</ul></div>';
-                if (r.warnings.length) h += '<div><h3>Hinweise</h3><ul>' + r.warnings.map((x) => '<li>' + esc(x.msg) + '</li>').join('') + '</ul></div>';
-                if (r.checks) {
-                    const items = r.checks.items.slice().sort((a, b) => (a.ok === b.ok ? 0 : a.ok ? 1 : -1));
-                    h += '<details class="sub"><summary><span class="chev" aria-hidden="true">▸</span> Prüfprotokoll (' + cs.ok + '/' + cs.total + ' Regeln erfüllt)</summary><table class="checks"><thead><tr><th>Regel</th><th>Anforderung</th><th>Ergebnis</th></tr></thead><tbody>' +
-                        items.map((i) => '<tr><td class="id">' + esc(i.id) + '</td><td>' + esc(i.title) + (i.details && i.details.length ? '<div class="note">' + esc(i.details.join('; ')) + '</div>' : '') + '</td><td class="' + (i.ok ? 'st-ok">erfüllt' : 'st-err">nicht erfüllt') + '</td></tr>').join('') +
-                        '</tbody></table></details>';
-                }
-                h += '</div>';
-                return h;
+                return reviewState.get(g.key);
             }
-            function reportHTML(f) {
-                const r = f.result.report; const cs = checkSummary(r.checks); const b = r.before ? checkSummary(r.before) : null;
-                const li = (arr) => arr.map((x) => '<li>' + esc(x.msg) + '</li>').join('');
-                const rows = (r.checks ? r.checks.items : []).map((i) => '<tr><td>' + esc(i.id) + '</td><td>' + esc(i.title) + (i.details && i.details.length ? '<br><small>' + esc(i.details.join('; ')) + '</small>' : '') + '</td><td>' + (i.ok ? 'erfüllt' : '<b>nicht erfüllt</b>') + '</td></tr>').join('');
-                const figs = figGroups(r).map((g) => '<tr><td>' + g.pages.join(', ') + '</td><td>' + (g.decorative ? '<i>dekorativ</i>' : esc(g.alt)) + '</td></tr>').join('');
-                return '<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Prüfbericht ' + esc(f.name) + '</title><style>body{font:14px/1.5 system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#1b1f24}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top}h1{font-size:20px}h2{font-size:16px;margin-top:22px}</style></head><body>' +
-                    '<h1>Prüfbericht Barrierefreiheit (PDF/UA-1)</h1><p><b>Datei:</b> ' + esc(f.name) + ' → ' + esc(outName(f.name)) + '<br><b>Erstellt:</b> ' + esc(new Date().toLocaleString('de-CH')) + '<br><b>Titel:</b> ' + esc(r.info.title) + '<br><b>Sprache:</b> ' + esc(r.info.lang) + '<br><b>Seiten:</b> ' + esc(r.info.pages) + '</p>' +
-                    '<p><b>Automatische Prüfung:</b> ' + (b ? 'vorher ' + b.ok + '/' + b.total + ', ' : '') + 'nachher ' + (cs ? cs.ok + '/' + cs.total : '–') + ' maschinell prüfbare Regeln erfüllt (Regelnummern nach veraPDF-Profil PDF/UA-1).</p>' +
-                    (r.errors.length ? '<h2>Fehler</h2><ul>' + li(r.errors) + '</ul>' : '') +
-                    '<h2>Durchgeführte Korrekturen</h2><ul>' + li(r.fixes) + '</ul>' + (r.warnings.length ? '<h2>Hinweise (manuell prüfen)</h2><ul>' + li(r.warnings) + '</ul>' : '') +
-                    (figs ? '<h2>Alternativtexte</h2><table><tr><th>Seite(n)</th><th>Alternativtext</th></tr>' + figs + '</table>' : '') +
-                    '<h2>Prüfprotokoll</h2><table><tr><th>Regel</th><th>Anforderung</th><th>Ergebnis</th></tr>' + rows + '</table>' +
-                    '<p><small>Nicht maschinell prüfbar und daher manuell zu kontrollieren: inhaltliche Richtigkeit der Alternativtexte, sinnvolle Lesereihenfolge, korrekte Auszeichnung von Überschriften und Tabellen, Farbkontraste.</small></p></body></html>';
-            }
-            function structSummary(r) {
-                const c = r.counts || {}; const parts = [];
-                if (r.info.structElements) parts.push(r.info.structElements + ' Tags');
-                if (c.tables) parts.push(c.tables + ' Tabelle' + (c.tables > 1 ? 'n' : ''));
-                if (c.lists) parts.push(c.lists + ' Liste' + (c.lists > 1 ? 'n' : ''));
-                const nf = (r.figures || []).filter((x) => !x.formula).length;
-                if (nf) parts.push(nf + ' Abbildung' + (nf > 1 ? 'en' : ''));
-                if (c.formulas) parts.push(c.formulas + ' Formel' + (c.formulas > 1 ? 'n' : ''));
-                if (c.notes) parts.push(c.notes + ' Fussnote' + (c.notes > 1 ? 'n' : ''));
-                return esc(parts.join(' · ') || '–');
-            }
-            function drawThumbs(f, r) {
-                const groups = figGroups(r);
-                groups.forEach((g, i) => {
-                    const box = f.el.querySelector('[data-thumb="' + i + '"]'); if (!box) return;
-                    const lib = library[g.key];
-                    if (g.thumb) {
-                        const c = document.createElement('canvas'); c.width = g.thumb.w; c.height = g.thumb.h;
-                        c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(g.thumb.rgba), g.thumb.w, g.thumb.h), 0, 0);
-                        c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'Vorschau');
-                        box.textContent = ''; box.appendChild(c); g._canvas = c;
-                    } else if (g.jpeg) {
-                        const img = document.createElement('img'); img.alt = 'Vorschau';
-                        const dataUrl = () => 'data:image/jpeg;base64,' + bytesToBase64(new Uint8Array(g.jpeg));
-                        if (blobImagesBlocked) img.src = dataUrl();
-                        else {
-                            const url = URL.createObjectURL(new Blob([g.jpeg], { type: 'image/jpeg' }));
-                            // if the Content Security Policy does not allow blob: images, use a data: URL
-                            img.onerror = () => { img.onerror = null; blobImagesBlocked = true; URL.revokeObjectURL(url); img.src = dataUrl(); };
-                            img.src = url;
-                        }
-                        box.textContent = ''; box.appendChild(img); g._img = img;
-                    } else if (lib && lib.thumb) {
-                        const img = document.createElement('img'); img.alt = 'Vorschau'; img.src = lib.thumb; box.textContent = ''; box.appendChild(img);
-                    }
+            const pendingReview = () => figureGroups().filter((g) => g.needs && !stateOf(g).accepted);
+            /** automatically set texts of a file that nobody has accepted yet */
+            const altTodo = (f) => (f.result.report.figures || []).filter((fg) => needsReview(fg) && !(reviewState.get(figKey(f, fg)) || {}).accepted).length;
+            /** saved texts of similar images (same picture in another size or quality) */
+            function suggestionsFor(g, current) {
+                const out = [];
+                if (!g.phash) return out;
+                Object.keys(library).forEach((k) => {
+                    const e = library[k];
+                    if (k.indexOf('p:') !== 0 || k === g.phash || e.decorative || !e.alt) return;
+                    if (hashDistance(k, g.phash) <= 10 && e.alt !== current && out.indexOf(e.alt) === -1) out.push(e.alt);
                 });
-                f._groups = groups;
+                return out.slice(0, 3);
             }
-            function smallThumb(g) {
+            function libraryTexts() {
+                const seen = new Set();
+                return Object.keys(library).filter((k) => !library[k].alias && !library[k].decorative && library[k].alt)
+                    .sort((a, b) => String(library[b].saved || '').localeCompare(String(library[a].saved || '')))
+                    .map((k) => library[k].alt).filter((s) => !seen.has(s) && seen.add(s)).slice(0, 60);
+            }
+            function smallThumb(key) {
                 try {
-                    const src = g._canvas || g._img; if (!src) return null;
+                    const src = thumbs.get(key); if (!src) return null;
                     const w = src.width || src.naturalWidth; const h = src.height || src.naturalHeight; if (!w || !h) return null;
                     const s = Math.min(1, 64 / Math.max(w, h)); const c = document.createElement('canvas');
                     c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
@@ -7687,67 +8241,359 @@ ol.outline li { margin: 3px 0; }
                     return c.toDataURL('image/jpeg', 0.75);
                 } catch (e) { return null; }
             }
-            function bindCard(f) {
-                f.el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => act(f, b.dataset.act)));
-                if (f.status === 'ready') f.el.querySelectorAll('[data-ov]').forEach((el) => { el.addEventListener('input', () => readOverrides(f)); el.addEventListener('change', () => readOverrides(f)); });
+            /** save accepted texts in the library and re-create the files whose PDF does not contain them yet;
+             *  a file is also re-created when an accepted text is still marked as automatic in its test report */
+            function applyReview() {
+                const changed = new Set();
+                figureGroups().forEach((g) => {
+                    const st = reviewState.get(g.key);
+                    if (!st || !st.accepted) return;
+                    const prev = library[g.key];
+                    const entry = { alt: st.alt, decorative: st.decorative, thumb: (prev && prev.thumb) || smallThumb(g.key), saved: new Date().toISOString().slice(0, 10) };
+                    library[g.key] = entry;
+                    if (g.phash) library[g.phash] = Object.assign({}, entry, { thumb: null, alias: g.key });
+                    g.occ.forEach((o) => { if (needsReview(o.fig) || (o.fig.alt || '') !== st.alt || !!o.fig.decorative !== st.decorative) changed.add(o.file); });
+                });
+                saveLibrary();
+                const redo = files.filter((f) => changed.has(f) && f.status === 'done');
+                if (!redo.length) { goStep(3); return; }
+                redo.forEach(queue);
+                reviewRun = true;
+                startRun();
             }
-            function act(f, a) {
-                if (a === 'dl') download(new Blob([f.result.bytes], { type: 'application/pdf' }), outName(f.name));
-                else if (a === 'report') download(new Blob([reportHTML(f)], { type: 'text/html' }), f.name.replace(/\.pdf$/i, '') + '_Pruefbericht.html');
-                else if (a === 'toggle') { f.open = !f.open; renderFile(f); const b = f.el.querySelector('[data-act="toggle"]'); if (b) b.focus(); }
-                else if (a === 'remove') { const i = files.indexOf(f); if (i >= 0 && f.status !== 'running') { files.splice(i, 1); f.el.remove(); updateToolbar(); $('empty').hidden = files.length > 0; } }
-                else if (a === 'rerun') { readOverrides(f); requeue(f); }
-                else if (a === 'start') { readOverrides(f); f.status = 'queued'; renderFile(f); updateToolbar(); pump(); }
-                else if (a === 'saveAlts') {
-                    (f._groups || []).forEach((g) => {
-                        const card = f.el.querySelector('.fig[data-key="' + cssEsc(g.key) + '"]'); if (!card) return;
-                        const alt = card.querySelector('[data-alt]').value.trim(); const decBox = card.querySelector('[data-dec]'); const dec = !!(decBox && decBox.checked);
-                        if (!dec && !alt) return;
-                        const prev = library[g.key];
-                        const entry = { alt, decorative: dec, thumb: (prev && prev.thumb) || smallThumb(g), saved: new Date().toISOString().slice(0, 10) };
-                        library[g.key] = entry;
-                        if (g.phash) library[g.phash] = Object.assign({}, entry, { thumb: null, alias: g.key });
-                    });
-                    saveLibrary(); requeue(f);
+
+            // ------------------------------------------------------------------ rendering helpers
+            function announce(msg) { $('live').textContent = msg; }
+            function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+            function checkSummary(c) { if (!c) return null; const ok = c.items.filter((i) => i.ok).length; return { ok, total: c.items.length, passed: c.passed }; }
+            function stageText(s) { return tx('stages')[s] || s || ''; }
+            /** status of a processed file: PDF/UA erfüllt, Hinweise (with reasons) or Fehler */
+            function verdict(f) {
+                if (f.status === 'error') return { cls: 'err', label: t('stError'), hints: [f.error || t('unknownError')] };
+                const r = f.result.report; const cs = checkSummary(r.checks); const hints = []; const todo = altTodo(f);
+                if (r.errors.some((e) => e.code === 'no-text')) hints.push(t('hintOcr'));
+                else if (r.errors.length) hints.push(t('hintLimited'));
+                if (cs && !cs.passed) hints.push(t('hintRules', cs.total - cs.ok));
+                if (todo) hints.push(t('hintAlt', todo));
+                return hints.length ? { cls: 'warn', label: t('stHints'), hints } : { cls: 'ok', label: t('stOk'), hints };
+            }
+            function badge(f) {
+                if (f.status === 'ready') return '';
+                if (f.status === 'done' || f.status === 'error') { const v = verdict(f); return '<span class="badge ' + v.cls + '">' + (v.cls === 'ok' ? ICON.check : ICON.alert) + esc(v.label) + '</span>'; }
+                return '<span class="badge">' + esc(tx('status')[f.status]) + '</span>';
+            }
+            /** re-render a list without losing the keyboard focus inside it */
+            function keepFocus(container, render) {
+                const a = shadow.activeElement; let sel = null; let pos = null;
+                if (a && container.contains(a)) {
+                    const item = a.closest('[data-id],[data-key]');
+                    const attr = ['data-ov', 'data-act', 'data-alt', 'data-dec', 'data-filter'].find((x) => a.hasAttribute(x));
+                    if (item && attr) {
+                        sel = (item.dataset.id ? '[data-id="' + item.dataset.id + '"]' : '[data-key="' + cssEsc(item.dataset.key) + '"]') + ' [' + attr + (a.getAttribute(attr) ? '="' + a.getAttribute(attr) + '"' : '') + ']';
+                        if (typeof a.selectionStart === 'number') pos = [a.selectionStart, a.selectionEnd];
+                    }
+                }
+                render();
+                if (sel) {
+                    const el = container.querySelector(sel);
+                    if (el) { el.focus(); if (pos && el.setSelectionRange) try { el.setSelectionRange(pos[0], pos[1]); } catch (e) { /* not a text field */ } }
                 }
             }
             function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/["\\]/g, '\\$&'); }
-            function requeue(f) { f.status = 'queued'; f.result = null; f.open = true; renderFile(f); updateToolbar(); pump(); }
-            function updateToolbar() {
-                const done = files.filter((f) => f.status === 'done').length;
-                const passed = files.filter((f) => f.status === 'done' && f.result.report.checks && f.result.report.checks.passed && !f.result.report.errors.length).length;
-                const busy = files.some((f) => f.status === 'running' || f.status === 'queued');
+
+            // ------------------------------------------------------------------ step 1: Hochladen
+            /** per-file title / language / logo text; before the run (info = null) or to re-create a processed file */
+            function overrideForm(f, info) {
+                const s = settings(); const ov = f.overrides; const pre = !info;
+                const titleVal = pre ? (ov.title || '') : (ov.title || info.title || '');
+                const lab = (txt, field) => '<label class="f">' + esc(txt) + field + '</label>';
+                return '<div class="' + (pre ? 'ov-form' : 'adjust') + '">' +
+                    (pre ? '<p class="note">' + esc(t('ovNote')) + '</p>' : '') +
+                    lab(t('ovTitle'), '<input type="text" data-ov="title" value="' + esc(titleVal) + '" placeholder="' + esc(tx('titlePh')[s.title] || '') + '">') +
+                    lab(t('ovLang'), '<select data-ov="lang"><option value=""' + (!ov.lang ? ' selected' : '') + '>' + esc(t('ovLangDefault', langName(s.lang))) + '</option>' +
+                        LANG_CODES.map((c) => '<option value="' + c + '"' + (ov.lang === c ? ' selected' : '') + '>' + esc(langName(c)) + '</option>').join('') + '</select>') +
+                    lab(t('ovLogo'), '<input type="text" data-ov="logoAlt" value="' + esc(ov.logoAlt || '') + '" placeholder="' + esc(s.logoAlt || 'Logo') + '">') +
+                    (pre ? '' : '<button class="btn" data-act="rerun" type="button">' + esc(t('rerunFile')) + '</button>') +
+                    '</div>';
+            }
+            function readOverrides(f, root) {
+                const q = (k) => root.querySelector('[data-ov="' + k + '"]');
+                if (!q('title')) return;
+                const tt = q('title').value.trim(); const l = q('lang').value; const lg = q('logoAlt').value.trim();
+                const computed = f.result && f.result.report.info.title;
+                const o = {};
+                if (tt && tt !== computed) o.title = tt; else if (tt && f.overrides.title) o.title = f.overrides.title;
+                if (l) o.lang = l;
+                if (lg) o.logoAlt = lg;
+                f.overrides = o;
+            }
+            function renderFiles() {
+                const list = $('fileList');
+                $('filesHeading').textContent = t('filesHeading', files.length);
+                $('empty').hidden = files.length > 0;
+                $('clearAll').hidden = !files.length;
+                $('clearAll').disabled = busy();
+                keepFocus(list, () => {
+                    list.innerHTML = files.map((f) => {
+                        const r = f.result && f.result.report;
+                        const meta = (r && r.info.pages ? t('pages', r.info.pages) + ' · ' : '') + fmtSize(f.size);
+                        const canEdit = f.status === 'ready';
+                        return '<li class="file" data-id="' + f.id + '"><div class="file-row"><span class="file-ic">' + ICON.file + '</span>' +
+                            '<div class="file-info"><div class="file-name">' + esc(f.name) + '</div><div class="file-meta">' + esc(meta) + '</div></div>' + badge(f) +
+                            (canEdit ? '<button type="button" class="btn ghost sm" data-act="ov" aria-expanded="' + (f.ovOpen ? 'true' : 'false') + '" aria-label="' + esc(t('customizeFor', f.name)) + '">' + esc(t('customize')) + '</button>' : '') +
+                            '<button type="button" class="btn ghost sm" data-act="remove"' + (f.status === 'running' ? ' disabled' : '') + ' aria-label="' + esc(t('removeFor', f.name)) + '" title="' + esc(t('remove')) + '">' + ICON.close + '</button>' +
+                            '</div>' + (canEdit && f.ovOpen ? overrideForm(f, null) : '') + '</li>';
+                    }).join('');
+                });
+                updateCorrect();
+            }
+            function updateCorrect() {
                 const ready = files.filter((f) => f.status === 'ready').length;
-                $('count').textContent = files.length ? files.length + ' Datei' + (files.length === 1 ? '' : 'en') + (ready ? ' · ' + ready + ' bereit' : '') + ' · ' + done + ' fertig · ' + passed + ' bestanden' + (busy ? ' · in Arbeit …' : '') : '';
-                $('startAll').disabled = ready === 0; $('startAll').textContent = ready > 1 ? 'Verarbeitung starten (' + ready + ')' : 'Verarbeitung starten';
-                $('zipAll').disabled = done === 0; $('csvAll').disabled = done === 0; $('rerunAll').disabled = !files.some((f) => f.status === 'done' || f.status === 'error') || busy; $('clearAll').disabled = !files.length || busy;
+                $('correct').disabled = ready === 0;
+                $('correct').textContent = ready > 1 ? t('correctN', ready) : t('correct');
+            }
+            function renderSummary() {
+                const s = settings();
+                const parts = [langName(s.lang), tx('sumTitle')[s.title], tx('sumExisting')[s.existing], s.bookmarks ? t('sumBookmarks') : '', s.running ? t('sumRunning') : '', s.suffix ? t('sumSuffix', s.suffix) : '', s.autostart ? t('sumAutostart') : ''];
+                $('summaryTxt').textContent = t('summaryLabel') + ': ' + parts.filter(Boolean).join(' · ');
+            }
+            function removeFile(f) {
+                const i = files.indexOf(f);
+                if (i < 0 || f.status === 'running') return;
+                files.splice(i, 1); renderFiles(); renderResults(); updateStepper();
+            }
+            function clearAll() {
+                files.slice().forEach((f) => { if (f.status !== 'running') files.splice(files.indexOf(f), 1); });
+                renderFiles(); renderResults(); updateStepper();
             }
 
-            // ------------------------------------------------------------------ library
-            function renderLibrary() {
-                const keys = Object.keys(library).filter((k) => !library[k].alias);
-                $('libCount').textContent = keys.length ? '(' + keys.length + ')' : '(leer)';
-                const box = $('lib');
-                if (!keys.length) { box.innerHTML = '<p class="note">Noch keine gespeicherten Alternativtexte. Sie entstehen, wenn Sie bei einer Datei Alternativtexte speichern.</p>'; return; }
-                box.innerHTML = keys.map((k) => { const v = library[k]; return '<div class="item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '<span class="note" style="width:48px">' + (k.startsWith('vec:') ? 'Grafik' : 'Bild') + '</span>') + '<div class="txt">' + (v.decorative ? '<em>dekorativ</em>' : esc(v.alt)) + '</div><button class="btn small link" type="button" data-del="' + esc(k) + '">Löschen</button></div>'; }).join('') +
-                    '<div class="row"><button class="btn small" type="button" id="libClear">Alle löschen</button></div>';
-                box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
-                    const k = b.dataset.del; delete library[k];
-                    Object.keys(library).forEach((x) => { if (library[x].alias === k) delete library[x]; });
-                    saveLibrary();
-                }));
-                $('libClear').addEventListener('click', () => { if (confirmClear()) { library = {}; saveLibrary(); } });
+            // ------------------------------------------------------------------ step 2: Prüfen
+            function renderProgress() {
+                const runFiles = files.filter((f) => f.run === runId);
+                $('progList').innerHTML = runFiles.map((f) => '<li data-id="' + f.id + '"><div><div class="file-name">' + esc(f.name) + '</div><div class="stage" data-stage></div></div>' +
+                    '<div class="bar" role="progressbar" aria-label="' + esc(t('progressFor', f.name)) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div></li>').join('');
+                runFiles.forEach(updateProgressRow);
             }
-            function confirmClear() { return window.confirm ? window.confirm('Alle gespeicherten Alternativtexte löschen?') : true; }
+            function updateProgressRow(f) {
+                const li = $('progList').querySelector('li[data-id="' + f.id + '"]');
+                if (!li) { if (step === 2) renderProgress(); return; }
+                const end = f.status === 'done' || f.status === 'error';
+                const pct = end ? 100 : f.status === 'queued' ? 0 : Math.round((f.frac || 0) * 100);
+                li.className = f.status === 'done' ? 'ok' : f.status === 'error' ? 'err' : '';
+                const bar = li.querySelector('.bar'); bar.setAttribute('aria-valuenow', pct); bar.firstChild.style.width = pct + '%';
+                li.querySelector('[data-stage]').textContent = f.status === 'queued' ? t('waiting') : f.status === 'done' ? verdict(f).label : f.status === 'error' ? t('stError') + ': ' + (f.error || '') : stageText(f.stage);
+            }
+            function renderStep2() {
+                const isBusy = busy();
+                $('progList').hidden = !isBusy;
+                $('review').hidden = isBusy;
+                if (isBusy) {
+                    $('s2h').textContent = t('s2TitleRun');
+                    $('s2note').textContent = reviewRun ? t('applying') : t('s2RunNote');
+                    renderProgress();
+                    return;
+                }
+                const groups = figureGroups();
+                const items = groups.filter((g) => showAll || g.needs).sort((a, b) => (b.needs ? 1 : 0) - (a.needs ? 1 : 0));
+                const needed = groups.filter((g) => g.needs);
+                const pend = needed.filter((g) => !stateOf(g).accepted);
+                $('s2h').textContent = t('s2TitleReview');
+                $('s2note').textContent = pend.length ? t('reviewIntro', pend.length) : t('reviewNone');
+                $('libTexts').innerHTML = libraryTexts().map((s) => '<option value="' + esc(s) + '">').join('');
+                thumbs.clear();
+                $('figList').innerHTML = items.map((g, i) => figItem(g, i, items.length)).join('');
+                items.forEach((g) => drawThumb(g));
+                const others = groups.length - needed.length;
+                $('showAllWrap').hidden = !others;
+                $('showAll').checked = showAll;
+                $('showAllLbl').textContent = t('showAllFigures', others);
+                updateReviewBar();
+            }
+            function figItem(g, i, n) {
+                const st = stateOf(g);
+                const lib = library[g.key] || (g.phash ? library[g.phash] : null);
+                const src = lib ? tx('source').library : (tx('source')[g.source] || g.source);
+                const where = g.occ.map((o) => esc(o.file.name) + ' · ' + esc(t('pagesShort', o.pages))).join('; ');
+                const sugg = suggestionsFor(g, st.alt);
+                const id = 'alt-' + i;
+                return '<li class="fig' + (st.accepted ? ' accepted' : '') + '" data-key="' + esc(g.key) + '">' +
+                    '<div class="thumb" data-thumb>' + esc(tx('figKind')[g.formula ? 'formula' : g.vector ? 'vector' : 'image']) + '</div>' +
+                    '<div><div class="fig-meta"><span class="src">' + esc(src) + '</span><span>' + where + '</span></div>' +
+                    '<label class="sr-only" for="' + id + '">' + esc(t('altLabel', i + 1, n)) + '</label>' +
+                    '<input type="text" id="' + id + '" data-alt list="libTexts" autocomplete="off" value="' + esc(st.alt) + '" aria-describedby="' + id + '-e">' +
+                    (sugg.length ? '<div class="chips"><span>' + esc(t('suggestions')) + '</span>' + sugg.map((s) => '<button type="button" class="chip" data-sugg="' + esc(s) + '" aria-label="' + esc(t('useSuggestion', s)) + '">' + esc(s) + '</button>').join('') + '</div>' : '') +
+                    '<div class="fig-err" id="' + id + '-e" hidden>' + esc(t('needText')) + '</div>' +
+                    '<div class="fig-actions">' + (g.formula ? '<span></span>' : '<label class="c"><input type="checkbox" data-dec' + (st.decorative ? ' checked' : '') + '> ' + esc(t('decorative')) + '</label>') +
+                    '<span><button type="button" class="btn sm" data-act="accept" aria-label="' + esc(t('acceptFor', i + 1)) + '"' + (st.accepted ? ' hidden' : '') + '>' + esc(t('accept')) + '</button>' +
+                    '<span class="badge ok" data-accepted' + (st.accepted ? '' : ' hidden') + '>' + ICON.check + esc(t('accepted')) + '</span></span></div></div></li>';
+            }
+            function drawThumb(g) {
+                const li = $('figList').querySelector('li[data-key="' + cssEsc(g.key) + '"]');
+                const box = li && li.querySelector('[data-thumb]'); if (!box) return;
+                const lib = library[g.key];
+                if (g.thumb) {
+                    const c = document.createElement('canvas'); c.width = g.thumb.w; c.height = g.thumb.h;
+                    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(g.thumb.rgba), g.thumb.w, g.thumb.h), 0, 0);
+                    c.setAttribute('aria-hidden', 'true');
+                    box.textContent = ''; box.appendChild(c); thumbs.set(g.key, c);
+                } else if (g.jpeg) {
+                    const img = document.createElement('img'); img.alt = '';
+                    const dataUrl = () => 'data:image/jpeg;base64,' + bytesToBase64(new Uint8Array(g.jpeg));
+                    if (blobImagesBlocked) img.src = dataUrl();
+                    else {
+                        const url = URL.createObjectURL(new Blob([g.jpeg], { type: 'image/jpeg' }));
+                        // if the Content Security Policy does not allow blob: images, use a data: URL
+                        img.onerror = () => { img.onerror = null; blobImagesBlocked = true; URL.revokeObjectURL(url); img.src = dataUrl(); };
+                        img.src = url;
+                    }
+                    box.textContent = ''; box.appendChild(img); thumbs.set(g.key, img);
+                } else if (lib && lib.thumb) {
+                    const img = document.createElement('img'); img.alt = ''; img.src = lib.thumb; box.textContent = ''; box.appendChild(img);
+                }
+            }
+            function updateReviewBar() {
+                const lis = Array.from($('figList').children);
+                const needed = figureGroups().filter((g) => g.needs);
+                const acc = needed.filter((g) => stateOf(g).accepted).length;
+                $('reviewCount').textContent = needed.length ? t('reviewCount', acc, needed.length) : '';
+                $('acceptAll').hidden = !lis.some((li) => !li.classList.contains('accepted'));
+                const anyTouched = Array.from(reviewState.values()).some((s) => s.accepted || s.edited);
+                $('continue').textContent = anyTouched ? t('continueApply') : t('continueOnly');
+            }
+            function groupOf(li) { return figureGroups().find((g) => g.key === li.dataset.key); }
+            function setAccepted(li, on) {
+                li.classList.toggle('accepted', on);
+                li.querySelector('[data-act="accept"]').hidden = on;
+                li.querySelector('[data-accepted]').hidden = !on;
+            }
+            function acceptItem(li) {
+                const g = groupOf(li); if (!g) return false;
+                const st = stateOf(g); const input = li.querySelector('[data-alt]'); const dec = li.querySelector('[data-dec]');
+                st.alt = input.value.trim(); st.decorative = !!(dec && dec.checked);
+                const err = li.querySelector('.fig-err');
+                if (!st.decorative && !st.alt) { err.hidden = false; input.setAttribute('aria-invalid', 'true'); input.focus(); return false; }
+                err.hidden = true; input.removeAttribute('aria-invalid');
+                st.accepted = true; setAccepted(li, true); updateReviewBar();
+                return true;
+            }
+            function focusNextFrom(li) {
+                const lis = Array.from($('figList').children);
+                const next = lis.slice(lis.indexOf(li) + 1).concat(lis.slice(0, lis.indexOf(li))).find((x) => !x.classList.contains('accepted'));
+                if (next) next.querySelector('[data-alt]').focus(); else $('continue').focus();
+            }
+            function acceptAll() {
+                for (const li of Array.from($('figList').children)) {
+                    if (!li.classList.contains('accepted') && !acceptItem(li)) return;
+                }
+                applyReview();
+            }
+            /** "Weiter": texts the user edited count as accepted; untouched suggestions stay unreviewed */
+            function continueReview() {
+                for (const li of Array.from($('figList').children)) {
+                    const g = groupOf(li); const st = g && reviewState.get(g.key);
+                    if (st && st.edited && !st.accepted && !acceptItem(li)) return;
+                }
+                applyReview();
+            }
 
-            // ------------------------------------------------------------------ downloads & zip
+            // ------------------------------------------------------------------ step 3: Herunterladen
+            function renderResults() {
+                const list = $('resultList');
+                const res = files.filter((f) => (f.status === 'done' || f.status === 'error') && f.result !== null);
+                const v = res.map(verdict);
+                const n = (cls) => v.filter((x) => x.cls === cls).length;
+                $('s3summary').textContent = res.length ? t('s3Summary', res.length, n('ok'), n('warn'), n('err')) : '';
+                $('zipAll').disabled = !doneFiles().length; $('csvAll').disabled = !res.length; $('rerunAll').disabled = !res.length || busy();
+                keepFocus(list, () => { list.innerHTML = res.map((f, i) => resultCard(f, v[i])).join(''); });
+            }
+            function resultCard(f, v) {
+                const r = f.result && f.result.report;
+                const meta = (r && r.info.pages ? t('pages', r.info.pages) + ' · ' : '') + fmtSize(f.size) + (f.status === 'done' ? ' → ' + fmtSize(f.result.bytes.byteLength) : '');
+                const hints = f.status === 'error' ? de(v.hints.join(' · ')) : esc(v.hints.join(' · '));
+                return '<li class="panel" data-id="' + f.id + '"><div class="result-main">' +
+                    '<span class="badge ' + v.cls + '">' + (v.cls === 'ok' ? ICON.check : ICON.alert) + esc(v.label) + '</span>' +
+                    '<div class="result-info"><div class="file-name">' + esc(f.name) + '</div><div class="file-meta">' + esc(meta) + '</div>' +
+                    (v.hints.length ? '<div class="result-hints">' + hints + '</div>' : '') + '</div>' +
+                    (f.status === 'done' ? '<button type="button" class="btn primary sm" data-act="dl" aria-label="' + esc(t('downloadFor', outName(f.name))) + '">' + ICON.download + esc(t('download')) + '</button>' : '') +
+                    (r ? '<button type="button" class="btn sm" data-act="toggle" aria-expanded="' + (f.open ? 'true' : 'false') + '" aria-controls="det-' + f.id + '">' + esc(f.open ? t('hideDetails') : t('showDetails')) + '</button>'
+                        : '<button type="button" class="btn ghost sm" data-act="remove" aria-label="' + esc(t('removeFor', f.name)) + '" title="' + esc(t('remove')) + '">' + ICON.close + '</button>') +
+                    '</div>' + (r && f.open ? detailsHTML(f, r) : '') + '</li>';
+            }
+            function structSummary(r) {
+                const c = r.counts || {}; const s = tx('struct'); const parts = [];
+                if (r.info.structElements) parts.push(s.tags(r.info.structElements));
+                if (c.tables) parts.push(s.tables(c.tables));
+                if (c.lists) parts.push(s.lists(c.lists));
+                const nf = (r.figures || []).filter((x) => !x.formula).length;
+                if (nf) parts.push(s.figures(nf));
+                if (c.formulas) parts.push(s.formulas(c.formulas));
+                if (c.notes) parts.push(s.notes(c.notes));
+                return esc(parts.join(' · ') || '–');
+            }
+            function detailsHTML(f, r) {
+                const cs = checkSummary(r.checks); const before = r.before ? checkSummary(r.before) : null; const info = r.info || {};
+                const box = (k, v) => '<div><b>' + esc(k) + '</b>' + v + '</div>';
+                const list = (title, arr) => (arr.length ? '<div><h4>' + esc(title) + '</h4><ul>' + arr.map((x) => '<li>' + de(x.msg) + '</li>').join('') + '</ul></div>' : '');
+                let h = '<div class="details" id="det-' + f.id + '">';
+                if (lang !== 'de') h += '<p class="note">' + esc(t('engineGerman')) + '</p>';
+                if (r.errors.length) h += '<div class="callout">' + r.errors.map((e) => de(e.msg)).join('<br>') + '</div>';
+                h += '<div class="kv">' + box(t('boxTitle'), esc(info.title || '–')) + box(t('boxLang'), esc(info.lang || '–')) +
+                    box(t('boxCheck'), cs ? esc(t('beforeAfter', before ? before.ok : null, cs.ok, cs.total)) : '–') + box(t('boxStruct'), structSummary(r)) + '</div>';
+                h += list(t('fixesTitle'), r.fixes) + list(t('warningsTitle'), r.warnings);
+                const figs = (r.figures || []);
+                if (figs.length) {
+                    h += '<div><h4>' + esc(t('figuresTitle', figs.length)) + '</h4><ul class="figlist">' +
+                        figs.map((fg) => '<li>' + esc(t('pageShort', fg.page + 1)) + ': ' + (fg.decorative ? '<i>' + esc(t('decorativeShort')) + '</i>' : esc(fg.alt)) + '</li>').join('') +
+                        '</ul><p><button type="button" class="btn sm" data-act="edit-alts">' + esc(t('editInReview')) + '</button></p></div>';
+                }
+                if (r.outline && r.outline.length) {
+                    const names = tx('outlineTypes');
+                    h += '<details class="x"><summary><span class="chev" aria-hidden="true">▸</span> ' + esc(t('outlineTitle', r.outline.length, r.outline.length >= 400)) + '</summary><ol class="outline">' +
+                        r.outline.map((o) => '<li><span class="tag tag-' + esc(o.type) + '">' + esc(names[o.type] || o.type) + '</span> ' + esc(o.text) + ' <span class="note">' + esc(t('pageShort', o.page)) + '</span></li>').join('') + '</ol></details>';
+                }
+                if (r.checks) {
+                    const items = r.checks.items.slice().sort((a, b) => (a.ok === b.ok ? 0 : a.ok ? 1 : -1));
+                    const failed = items.filter((i) => !i.ok).length;
+                    h += '<details class="x"><summary><span class="chev" aria-hidden="true">▸</span> ' + esc(t('logTitle', cs.ok, cs.total)) + '</summary>' +
+                        '<div class="log-tools"><label class="c"><input type="checkbox" data-filter' + (f.onlyFailed ? ' checked' : '') + '> ' + esc(t('onlyFailed')) + '</label></div>' +
+                        '<table class="checks' + (f.onlyFailed ? ' only-failed' : '') + '"><thead><tr><th scope="col">' + esc(t('colRule')) + '</th><th scope="col">' + esc(t('colReq')) + '</th><th scope="col">' + esc(t('colResult')) + '</th></tr></thead><tbody>' +
+                        items.map((i) => '<tr class="' + (i.ok ? 'ok' : 'fail') + '"><td class="id">' + esc(i.id) + '</td><td>' + de(i.title) + (i.details && i.details.length ? '<div class="note">' + de(i.details.join('; ')) + '</div>' : '') + '</td><td class="' + (i.ok ? 'st-ok">' + esc(t('ruleOk')) : 'st-err">' + esc(t('ruleFail'))) + '</td></tr>').join('') +
+                        '</tbody></table><p class="note" data-allok' + (f.onlyFailed && !failed ? '' : ' hidden') + '>' + esc(t('allRulesOk')) + '</p></details>';
+                }
+                h += '<div><h4>' + esc(t('adjustTitle')) + '</h4>' + overrideForm(f, info) + '</div>';
+                h += '<div class="detail-actions"><button type="button" class="btn" data-act="report">' + esc(t('report')) + '</button>' +
+                    '<button type="button" class="btn ghost" data-act="remove">' + esc(t('remove')) + '</button></div>';
+                return h + '</div>';
+            }
+            function reportHTML(f) {
+                const r = f.result.report; const cs = checkSummary(r.checks); const b = r.before ? checkSummary(r.before) : null; const R = tx('rep');
+                const li = (arr) => arr.map((x) => '<li>' + de(x.msg) + '</li>').join('');
+                const rows = (r.checks ? r.checks.items : []).map((i) => '<tr><td>' + esc(i.id) + '</td><td>' + de(i.title) + (i.details && i.details.length ? '<br><small>' + de(i.details.join('; ')) + '</small>' : '') + '</td><td>' + (i.ok ? esc(R.ok) : '<b>' + esc(R.fail) + '</b>') + '</td></tr>').join('');
+                const groups = new Map();
+                (r.figures || []).forEach((fg) => {
+                    const k = figKey(f, fg);
+                    if (!groups.has(k)) groups.set(k, Object.assign({ pages: [] }, fg));
+                    if (groups.get(k).pages.indexOf(fg.page + 1) === -1) groups.get(k).pages.push(fg.page + 1);
+                });
+                const figs = Array.from(groups.values()).map((g) => '<tr><td>' + g.pages.join(', ') + '</td><td>' + (g.decorative ? '<i>' + esc(R.decorative) + '</i>' : esc(g.alt)) + '</td></tr>').join('');
+                return '<!doctype html><html lang="' + lang + '"><head><meta charset="utf-8"><title>' + esc(R.title(f.name)) + '</title><style>body{font:14px/1.5 system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#1b1f24}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top}h1{font-size:20px}h2{font-size:16px;margin-top:22px}</style></head><body>' +
+                    '<h1>' + esc(R.h1) + '</h1><p><b>' + esc(R.file) + ':</b> ' + esc(f.name) + ' → ' + esc(outName(f.name)) + '<br><b>' + esc(R.created) + ':</b> ' + esc(new Date().toLocaleString(t('locale'))) + '<br><b>' + esc(R.docTitle) + ':</b> ' + esc(r.info.title) + '<br><b>' + esc(R.lang) + ':</b> ' + esc(r.info.lang) + '<br><b>' + esc(R.pages) + ':</b> ' + esc(r.info.pages) + '</p>' +
+                    '<p>' + R.auto(b ? b.ok + '/' + b.total : '', cs ? cs.ok + '/' + cs.total : '–') + '</p>' +
+                    (r.errors.length ? '<h2>' + esc(R.errors) + '</h2><ul>' + li(r.errors) + '</ul>' : '') +
+                    '<h2>' + esc(R.fixes) + '</h2><ul>' + li(r.fixes) + '</ul>' + (r.warnings.length ? '<h2>' + esc(R.warnings) + '</h2><ul>' + li(r.warnings) + '</ul>' : '') +
+                    (figs ? '<h2>' + esc(R.alts) + '</h2><table><tr><th>' + esc(R.altPages) + '</th><th>' + esc(R.altText) + '</th></tr>' + figs + '</table>' : '') +
+                    '<h2>' + esc(R.log) + '</h2><table><tr><th>' + esc(R.rule) + '</th><th>' + esc(R.req) + '</th><th>' + esc(R.result) + '</th></tr>' + rows + '</table>' +
+                    '<p><small>' + esc(R.foot) + '</small></p></body></html>';
+            }
+
+            // ------------------------------------------------------------------ downloads, ZIP and CSV
             function download(blob, name) {
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
                 // keep the click inside the widget so no SAC handler can intercept the link
                 a.addEventListener('click', (e) => e.stopPropagation());
                 $('root').appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
             }
-            const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+            const CRC = (() => { const tb = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; tb[n] = c >>> 0; } return tb; })();
             function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
             function zip(entries) {
                 const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
@@ -7774,91 +8620,160 @@ ol.outline li { margin: 3px 0; }
                 end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
                 return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: 'application/zip' });
             }
-
-            // ------------------------------------------------------------------ wiring
             function downloadAll() {
-                const done = files.filter((f) => f.status === 'done');
+                const done = doneFiles();
                 if (!done.length) return;
-                download(zip(done.map((f) => ({ name: outName(f.name), data: f.result.bytes }))), 'PDF-UA-Korrektur.zip');
+                download(zip(done.map((f) => ({ name: outName(f.name), data: f.result.bytes }))), t('zipName'));
             }
             function summaryRows() {
                 return files.map((f) => {
                     const r = f.result && f.result.report; const cs = r && checkSummary(r.checks); const b = r && r.before ? checkSummary(r.before) : null;
-                    const altTodo = r ? (r.figures || []).filter((x) => !x.decorative && (x.source === 'default' || x.source === 'logo' || x.source === 'formula')).length : '';
-                    return { f, r, cs, b, altTodo };
+                    return { f, r, cs, b, altTodo: r ? altTodo(f) : '' };
                 });
             }
             function downloadCsv() {
                 const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-                const lines = [['Datei', 'Ausgabe', 'Status', 'Seiten', 'Regeln vorher', 'Regeln nachher', 'PDF/UA-Prüfung', 'Titel', 'Sprache', 'Abbildungen mit Standard-Alternativtext', 'Fehler/Hinweise'].map(q).join(';')];
-                summaryRows().forEach(({ f, r, cs, b, altTodo }) => {
-                    lines.push([f.name, f.status === 'done' ? outName(f.name) : '', f.status === 'done' ? 'fertig' : f.status === 'error' ? 'Fehler' : 'offen', r ? r.info.pages : '', b ? b.ok + '/' + b.total : '', cs ? cs.ok + '/' + cs.total : '', cs ? (cs.passed ? 'bestanden' : 'offen') : '', r ? r.info.title : '', r ? r.info.lang : '', altTodo,
+                const st = tx('csvStatus'); const ck = tx('csvCheck');
+                const lines = [tx('csvHead').map(q).join(';')];
+                summaryRows().forEach(({ f, r, cs, b, altTodo: todo }) => {
+                    lines.push([f.name, f.status === 'done' ? outName(f.name) : '', f.status === 'done' ? st.done : f.status === 'error' ? st.error : st.open, r ? r.info.pages : '', b ? b.ok + '/' + b.total : '', cs ? cs.ok + '/' + cs.total : '', cs ? (cs.passed ? ck.passed : ck.open) : '', r ? r.info.title : '', r ? r.info.lang : '', todo,
                         r ? r.errors.concat(r.warnings).map((x) => x.msg).join(' | ') : (f.error || '')].map(q).join(';'));
                 });
-                download(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'PDF-UA-Korrektur_Uebersicht.csv');
+                download(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), t('csvName'));
             }
-            function startAll() { files.forEach((f) => { if (f.status === 'ready') { readOverrides(f); f.status = 'queued'; renderFile(f); } }); updateToolbar(); pump(); }
             function rerunAll() {
-                if (files.some((f) => f.status === 'running' || f.status === 'queued')) return;
-                files.forEach((f) => { if (f.status === 'done' || f.status === 'error') { f.status = 'queued'; f.result = null; renderFile(f); } }); updateToolbar(); pump();
+                if (busy()) return;
+                const res = files.filter((f) => f.status === 'done' || f.status === 'error');
+                if (!res.length) return;
+                res.forEach(queue);
+                startRun();
             }
-            function clearAll() { files.slice().forEach((f) => { if (f.status !== 'running') { files.splice(files.indexOf(f), 1); f.el.remove(); } }); updateToolbar(); $('empty').hidden = files.length > 0; }
 
-            $('pick').addEventListener('click', () => $('file').click());
-            $('pickDir').addEventListener('click', () => $('dir').click());
-            $('file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
-            $('dir').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
-            const drop = $('drop');
-            ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { if (!hasFiles(e)) return; e.preventDefault(); drop.classList.add('over'); }));
-            ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-            drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
-            // files dropped anywhere on the widget are added too; the rest of the SAC page is left alone
-            const rootEl = $('root');
-            rootEl.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); e.stopPropagation(); } });
-            rootEl.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); if (e.target.closest && !e.target.closest('#drop') && e.dataTransfer) addFiles(e.dataTransfer.files); });
-            // typing in the widget must not trigger SAC keyboard shortcuts (e.g. Delete removes the widget)
-            ['keydown', 'keyup', 'keypress'].forEach((t) => rootEl.addEventListener(t, (e) => {
-                if (!isEditable(e.target) || e.key === 'Escape' || /^F\d+$/.test(e.key) || ((e.ctrlKey || e.metaKey) && /^s$/i.test(e.key))) return;
-                e.stopPropagation();
-            }));
-            ['copy', 'cut', 'paste'].forEach((t) => rootEl.addEventListener(t, (e) => { if (isEditable(e.target)) e.stopPropagation(); }));
-            $('zipAll').addEventListener('click', downloadAll);
-            $('csvAll').addEventListener('click', downloadCsv);
-            $('startAll').addEventListener('click', startAll);
-            $('rerunAll').addEventListener('click', rerunAll);
-            $('resetSettings').addEventListener('click', resetSettings);
-            $('clearAll').addEventListener('click', clearAll);
+            // ------------------------------------------------------------------ steps
+            function canGo(n) {
+                if (n === 1) return true;
+                if (n === 2) return busy() || hasResults();
+                return hasResults() && !busy();
+            }
+            function isDone(n) {
+                if (n === 1) return busy() || hasResults();
+                if (n === 2) return hasResults() && !busy() && !pendingReview().length;
+                return false;
+            }
+            function updateStepper() {
+                shadow.querySelectorAll('.step-btn').forEach((b) => {
+                    const n = Number(b.dataset.step); const cur = n === step; const done = !cur && isDone(n);
+                    b.disabled = !cur && !canGo(n);
+                    if (cur) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+                    b.classList.toggle('done', done);
+                    b.querySelector('.num').innerHTML = done ? ICON.check : String(n);
+                    b.querySelector('.done-sr').hidden = !done;
+                });
+            }
+            function goStep(n, userAction) {
+                if (n !== step && !canGo(n)) return false;
+                const prev = step; step = n;
+                const a = shadow.activeElement;
+                const focusInMain = !!a && $('main').contains(a);
+                [1, 2, 3].forEach((i) => { $('step' + i).hidden = i !== n; });
+                if (n === 1) { renderFiles(); renderSummary(); } else if (n === 2) renderStep2(); else renderResults();
+                updateStepper();
+                $('main').scrollTop = 0;
+                // keep keyboard and screen-reader users oriented: the heading of the new step gets the focus
+                if (userAction || focusInMain) $('s' + n + 'h').focus();
+                else if (prev !== n) announce(t('annStep', n, t('step' + n)));
+                if (prev !== n) host._fire('onStepChanged');
+                return true;
+            }
 
-            // ------------------------------------------------------------------ widget properties
+            // ------------------------------------------------------------------ settings drawer
+            let drawerOpener = null;
+            function openDrawer(opener) {
+                if (!P().showSettings) return;
+                drawerOpener = opener;
+                renderLibrary();
+                $('drawer').classList.add('open'); $('scrim').classList.add('open');
+                $('openSettings').setAttribute('aria-expanded', 'true');
+                $('topbar').inert = true; $('main').inert = true;
+                $('closeSettings').focus();
+            }
+            function closeDrawer() {
+                if (!$('drawer').classList.contains('open')) return;
+                $('drawer').classList.remove('open'); $('scrim').classList.remove('open');
+                $('openSettings').setAttribute('aria-expanded', 'false');
+                $('topbar').inert = false; $('main').inert = false;
+                const o = drawerOpener; drawerOpener = null;
+                if (o && !o.hidden) o.focus();
+            }
+            function renderLibrary() {
+                const keys = Object.keys(library).filter((k) => !library[k].alias);
+                $('libCount').textContent = keys.length ? t('libCount', keys.length) : '';
+                const box = $('lib');
+                if (!keys.length) { box.innerHTML = '<p class="note">' + esc(t('libEmpty')) + '</p>'; return; }
+                box.innerHTML = '<ul class="lib">' + keys.map((k) => {
+                    const v = library[k]; const label = v.decorative ? t('decorativeShort') : v.alt;
+                    return '<li>' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '<span class="ph">' + esc(k.indexOf('vec:') === 0 ? t('libGraphic') : t('libImage')) + '</span>') +
+                        '<span class="txt">' + (v.decorative ? '<i>' + esc(label) + '</i>' : esc(label)) + '</span>' +
+                        '<button class="btn ghost sm" type="button" data-del="' + esc(k) + '" aria-label="' + esc(t('libDeleteFor', label)) + '">' + esc(t('libDelete')) + '</button></li>';
+                }).join('') + '</ul><button class="btn sm" type="button" data-del-all>' + esc(t('libDeleteAll')) + '</button>';
+            }
+            function deleteFromLibrary(k) {
+                delete library[k];
+                Object.keys(library).forEach((x) => { if (library[x].alias === k) delete library[x]; });
+                saveLibrary();
+            }
+            function confirmClear() { return window.confirm ? window.confirm(t('libConfirm')) : true; }
+
+            // ------------------------------------------------------------------ language, texts, look
+            function setLang(l, byUser) {
+                if (UI_LANGS.indexOf(l) === -1) return false;
+                lang = l;
+                if (byUser && rememberLang()) store.set(LANG_KEY, l);
+                applyLanguage();
+                announce(t('annLang'));
+                return true;
+            }
+            function applyLanguage() {
+                $('root').setAttribute('lang', lang);
+                shadow.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+                shadow.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+                shadow.querySelectorAll('#langSwitch [data-lang]').forEach((b) => { b.setAttribute('aria-pressed', b.dataset.lang === lang ? 'true' : 'false'); });
+                fillSelects();
+                applyTexts();
+                $('drawerNote').textContent = P().rememberSettings ? t('drawerNote') : t('drawerNoteSession');
+                renderSummary(); renderFiles(); renderResults(); renderLibrary(); updateStepper();
+                if (step === 2) renderStep2();
+            }
             function applyTexts() {
-                const p = P();
-                $('appTitle').textContent = p.appTitle;
-                $('appTagline').textContent = p.appTagline;
-                $('logo').textContent = p.logoText;
-                $('root').setAttribute('aria-label', p.appTitle || 'PDF/UA-Korrektur');
+                const title = propText('appTitle');
+                $('appName').textContent = title;
+                $('root').setAttribute('aria-label', title);
+                $('tagline').textContent = propText('appTagline');
+                $('logo').textContent = P().logoText;
             }
             function applyVisibility() {
                 const p = P();
-                $('appHeader').hidden = !p.showHeader;
-                $('setPanel').hidden = !p.showSettings;
-                $('libBox').hidden = !p.showLibrary;
-                $('appFooter').hidden = !p.showFooter;
-                // without the settings panel the remaining steps are numbered 1 and 2
-                shadow.querySelectorAll('[data-step]').forEach((el) => { el.textContent = String(Number(el.dataset.step) - (p.showSettings ? 0 : 1)); });
+                $('brand').hidden = !p.showHeader;
+                $('langSwitch').hidden = !p.showLanguageSwitch;
+                $('openSettings').hidden = !p.showSettings;
+                $('summaryBtn').hidden = !p.showSettings;
+                $('libGroup').hidden = !p.showLibrary;
+                $('aboutGroup').hidden = !p.showFooter;
+                if (!p.showSettings) closeDrawer();
             }
             function applyLook() {
                 const p = P(); const root = $('root');
                 const scheme = ['light', 'dark', 'auto'].indexOf(p.colorScheme) !== -1 ? p.colorScheme : 'light';
                 root.classList.remove('scheme-light', 'scheme-dark', 'scheme-auto');
                 root.classList.add('scheme-' + scheme);
-                const rgb = hexToRgb(p.accentColor);
+                let rgb = hexToRgb(p.accentColor);
                 if (rgb) {
-                    // soft tint and readable ink derived from the accent, like the program's own palette
-                    const soft = rgb.map((c) => Math.round(c * 0.12 + 255 * 0.88));
-                    const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
-                    root.style.setProperty('--user-accent', p.accentColor.trim());
+                    // darken a light accent until accent text, white text on it and its tints keep AA contrast
+                    for (let i = 0; i < 40 && 1.05 / (luminance(rgb) + 0.05) < 5.5; i++) rgb = rgb.map((c) => Math.round(c * 0.92));
+                    const soft = rgb.map((c) => Math.round(c * 0.1 + 255 * 0.9));
+                    root.style.setProperty('--user-accent', '#' + rgb.map((c) => c.toString(16).padStart(2, '0')).join(''));
                     root.style.setProperty('--user-accent-soft', 'rgb(' + soft.join(',') + ')');
-                    root.style.setProperty('--user-accent-ink', lum > 0.6 ? '#1b1f24' : '#ffffff');
+                    root.style.setProperty('--user-accent-ink', '#ffffff');
                 } else {
                     ['--user-accent', '--user-accent-soft', '--user-accent-ink'].forEach((v) => root.style.removeProperty(v));
                 }
@@ -7868,37 +8783,159 @@ ol.outline li { margin: 3px 0; }
             function applyDefaults(reloadOverrides) {
                 captureDefaults();
                 if (reloadOverrides) loadSettings();
-                $('setNote').textContent = (P().rememberSettings ? 'Gelten für alle Dateien und bleiben in diesem Browser gespeichert.' : 'Gelten für alle Dateien.') + ' Pro Datei lässt sich alles vor dem Start überschreiben.';
+                $('drawerNote').textContent = P().rememberSettings ? t('drawerNote') : t('drawerNoteSession');
                 applySettings(Object.assign({}, DEFAULTS, overrides));
                 settingsChanged();
             }
             function applyProps(keys) {
                 const has = (list) => !keys || keys.some((k) => list.indexOf(k) !== -1);
-                if (has(TEXT_KEYS)) applyTexts();
+                const langKeys = ['uiLanguage', 'showLanguageSwitch', 'rememberSettings'];
+                if (has(langKeys)) lang = initialLang();
+                if (has(langKeys) || has(TEXT_KEYS)) applyLanguage();
                 if (has(VISIBILITY_KEYS)) applyVisibility();
                 if (has(LOOK_KEYS)) applyLook();
                 const reload = has(['rememberSettings', 'showSettings']);
                 if (reload || has(Object.values(SETTING_PROPS))) applyDefaults(reload);
             }
 
+            // ------------------------------------------------------------------ wiring
+            const rootEl = $('root');
+            const fileOf = (li) => li && files.find((x) => x.id === Number(li.dataset.id));
+            $('pick').addEventListener('click', () => $('file').click());
+            $('pickDir').addEventListener('click', () => $('dir').click());
+            $('file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+            $('dir').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+            const drop = $('drop');
+            ['dragenter', 'dragover'].forEach((tp) => drop.addEventListener(tp, (e) => { if (!hasFiles(e)) return; e.preventDefault(); drop.classList.add('over'); }));
+            ['dragleave', 'drop'].forEach((tp) => drop.addEventListener(tp, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+            drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+            // files dropped anywhere on the widget are added too; the rest of the SAC page is left alone
+            rootEl.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); e.stopPropagation(); } });
+            rootEl.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); if (e.target.closest && !e.target.closest('#drop') && e.dataTransfer) addFiles(e.dataTransfer.files); });
+            // typing in the widget must not trigger SAC keyboard shortcuts (e.g. Delete removes the widget)
+            ['keydown', 'keyup', 'keypress'].forEach((tp) => rootEl.addEventListener(tp, (e) => {
+                if (!isEditable(e.target) || e.key === 'Escape' || /^F\d+$/.test(e.key) || ((e.ctrlKey || e.metaKey) && /^s$/i.test(e.key))) return;
+                e.stopPropagation();
+            }));
+            ['copy', 'cut', 'paste'].forEach((tp) => rootEl.addEventListener(tp, (e) => { if (isEditable(e.target)) e.stopPropagation(); }));
+
+            shadow.querySelectorAll('.step-btn').forEach((b) => b.addEventListener('click', () => goStep(Number(b.dataset.step), true)));
+            $('langSwitch').addEventListener('click', (e) => { const b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang, true); });
+            $('openSettings').addEventListener('click', () => openDrawer($('openSettings')));
+            $('summaryBtn').addEventListener('click', () => openDrawer($('summaryBtn')));
+            $('closeSettings').addEventListener('click', closeDrawer);
+            $('drawerDone').addEventListener('click', closeDrawer);
+            $('scrim').addEventListener('click', closeDrawer);
+            $('resetSettings').addEventListener('click', resetSettings);
+            $('drawer').addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') { e.stopPropagation(); closeDrawer(); return; }
+                if (e.key !== 'Tab') return;
+                const items = Array.from($('drawer').querySelectorAll('button, input, select, textarea, [href]')).filter((el) => !el.disabled && el.getClientRects().length);
+                if (!items.length) return;
+                const first = items[0]; const last = items[items.length - 1];
+                if (e.shiftKey && shadow.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && shadow.activeElement === last) { e.preventDefault(); first.focus(); }
+            });
+            $('lib').addEventListener('click', (e) => {
+                const del = e.target.closest('[data-del]');
+                if (del) { deleteFromLibrary(del.dataset.del); ($('lib').querySelector('[data-del]') || $('closeSettings')).focus(); return; }
+                if (e.target.closest('[data-del-all]') && confirmClear()) { library = {}; saveLibrary(); $('closeSettings').focus(); }
+            });
+
+            // step 1
+            $('correct').addEventListener('click', correct);
+            $('clearAll').addEventListener('click', () => { clearAll(); $('pick').focus(); });
+            $('fileList').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-act]'); const li = e.target.closest('li[data-id]'); const f = fileOf(li);
+                if (!btn || !f) return;
+                if (btn.dataset.act === 'ov') { f.ovOpen = !f.ovOpen; renderFiles(); }
+                else if (btn.dataset.act === 'remove') {
+                    const i = files.indexOf(f); removeFile(f);
+                    const rows = $('fileList').querySelectorAll('[data-act="remove"]');
+                    (rows[Math.min(i, rows.length - 1)] || $('pick')).focus();
+                }
+            });
+            ['input', 'change'].forEach((tp) => $('fileList').addEventListener(tp, (e) => {
+                if (!e.target.matches('[data-ov]')) return;
+                const li = e.target.closest('li[data-id]'); const f = fileOf(li); if (f) readOverrides(f, li);
+            }));
+
+            // step 2
+            const figList = $('figList');
+            function onAltEdited(li) {
+                const g = groupOf(li); if (!g) return;
+                const st = stateOf(g); const dec = li.querySelector('[data-dec]');
+                st.alt = li.querySelector('[data-alt]').value; st.decorative = !!(dec && dec.checked); st.edited = true;
+                li.querySelector('.fig-err').hidden = true; li.querySelector('[data-alt]').removeAttribute('aria-invalid');
+                if (st.accepted) { st.accepted = false; setAccepted(li, false); }
+                updateReviewBar();
+            }
+            figList.addEventListener('click', (e) => {
+                const li = e.target.closest('li.fig'); if (!li) return;
+                const chip = e.target.closest('[data-sugg]');
+                if (chip) { const input = li.querySelector('[data-alt]'); input.value = chip.dataset.sugg; onAltEdited(li); input.focus(); return; }
+                if (e.target.closest('[data-act="accept"]') && acceptItem(li)) focusNextFrom(li);
+            });
+            figList.addEventListener('input', (e) => { if (e.target.matches('[data-alt]')) onAltEdited(e.target.closest('li.fig')); });
+            figList.addEventListener('change', (e) => { if (e.target.matches('[data-dec]')) onAltEdited(e.target.closest('li.fig')); });
+            figList.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.isComposing || !e.target.matches('[data-alt]')) return;
+                e.preventDefault();
+                const li = e.target.closest('li.fig');
+                if (acceptItem(li)) focusNextFrom(li);
+            });
+            $('acceptAll').addEventListener('click', acceptAll);
+            $('continue').addEventListener('click', continueReview);
+            $('showAll').addEventListener('change', (e) => { showAll = e.target.checked; renderStep2(); });
+
+            // step 3
+            $('zipAll').addEventListener('click', downloadAll);
+            $('csvAll').addEventListener('click', downloadCsv);
+            $('rerunAll').addEventListener('click', rerunAll);
+            $('addMore').addEventListener('click', () => { goStep(1, true); $('pick').focus(); });
+            $('resultList').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-act]'); const li = e.target.closest('li[data-id]'); const f = fileOf(li);
+                if (!btn || !f) return;
+                const a = btn.dataset.act;
+                if (a === 'dl') download(new Blob([f.result.bytes], { type: 'application/pdf' }), outName(f.name));
+                else if (a === 'report') download(new Blob([reportHTML(f)], { type: 'text/html' }), f.name.replace(/\.pdf$/i, '') + t('reportSuffix'));
+                else if (a === 'toggle') { f.open = !f.open; renderResults(); }
+                else if (a === 'rerun') { readOverrides(f, li); queue(f); startRun(); }
+                else if (a === 'remove') { removeFile(f); ($('resultList').querySelector('[data-act]') || $('addMore')).focus(); }
+                else if (a === 'edit-alts') { showAll = true; goStep(2, true); }
+            });
+            $('resultList').addEventListener('change', (e) => {
+                const li = e.target.closest('li[data-id]'); const f = fileOf(li); if (!f) return;
+                if (e.target.matches('[data-filter]')) {
+                    f.onlyFailed = e.target.checked;
+                    const det = e.target.closest('details');
+                    det.querySelector('table.checks').classList.toggle('only-failed', f.onlyFailed);
+                    det.querySelector('[data-allok]').hidden = !(f.onlyFailed && !det.querySelector('tr.fail'));
+                } else if (e.target.matches('[data-ov]')) readOverrides(f, li);
+            });
+            $('resultList').addEventListener('input', (e) => {
+                if (!e.target.matches('[data-ov]')) return;
+                const li = e.target.closest('li[data-id]'); const f = fileOf(li); if (f) readOverrides(f, li);
+            });
+
             // ------------------------------------------------------------------ scripting API
             function fileSummary(row) {
-                const { f, r, cs, b, altTodo } = row;
+                const { f, r, cs, b, altTodo: todo } = row;
                 return {
                     file: f.name, output: f.status === 'done' ? outName(f.name) : '', status: f.status, pages: r ? r.info.pages : null,
                     rulesBefore: b ? b.ok + '/' + b.total : '', rulesAfter: cs ? cs.ok + '/' + cs.total : '', passed: !!(f.status === 'done' && cs && cs.passed && !r.errors.length),
-                    title: r ? r.info.title || '' : '', lang: r ? r.info.lang || '' : '', altTextsToReview: altTodo === '' ? 0 : altTodo,
+                    verdict: f.status === 'done' || f.status === 'error' ? ({ ok: 'ok', warn: 'hints', err: 'error' })[verdict(f).cls] : '',
+                    title: r ? r.info.title || '' : '', lang: r ? r.info.lang || '' : '', altTextsToReview: todo === '' ? 0 : todo,
                     messages: r ? r.errors.concat(r.warnings).map((x) => x.msg) : (f.error ? [f.error] : [])
                 };
             }
             const api = {
                 applyProps,
                 fileCount: () => files.length,
-                doneCount: () => files.filter((f) => f.status === 'done').length,
-                passedCount: () => files.filter((f) => f.status === 'done' && f.result.report.checks && f.result.report.checks.passed && !f.result.report.errors.length).length,
+                doneCount: () => doneFiles().length,
+                passedCount: () => doneFiles().filter((f) => f.result.report.checks && f.result.report.checks.passed && !f.result.report.errors.length).length,
                 summary: () => summaryRows().map(fileSummary),
                 lastProcessed: () => (lastDone && files.indexOf(lastDone) !== -1 ? fileSummary(summaryRows().find((x) => x.f === lastDone)) : null),
-                startAll, rerunAll, clearAll, downloadAll, downloadCsv, resetSettings,
+                startAll: correct, rerunAll, clearAll, downloadAll, downloadCsv, resetSettings,
                 openFilePicker: () => $('file').click(),
                 openFolderPicker: () => $('dir').click(),
                 getSetting: (k) => (Object.prototype.hasOwnProperty.call(settings(), k) ? settings()[k] : undefined),
@@ -7910,6 +8947,10 @@ ol.outline li { margin: 3px 0; }
                     recordSetting(k, val); settingsChanged(); return true;
                 },
                 engineMode: () => (!started ? 'idle' : inline ? 'inline' : 'worker'),
+                uiLanguage: () => lang,
+                setUiLanguage: (l) => setLang(String(l || '').toLowerCase(), false),
+                step: () => step,
+                goToStep: (n) => goStep(Number(n), false),
                 destroy() {
                     destroyed = true;
                     if (worker) { try { worker.terminate(); } catch (e) { /* already gone */ } }
@@ -7917,7 +8958,8 @@ ol.outline li { margin: 3px 0; }
                 }
             };
 
-            loadSettings(); applyProps(null); renderLibrary(); updateToolbar();
+            lang = initialLang();
+            loadSettings(); applyProps(null); goStep(1);
             host.__pdfua = { files, addFiles, library: () => library, mode: () => (inline ? 'inline' : 'worker') };
             return api;
         }
@@ -7978,6 +9020,10 @@ ol.outline li { margin: 3px 0; }
             setSetting(key, value) { this._app.setSetting(key, value); }
             resetSettings() { this._app.resetSettings(); }
             getEngineMode() { return this._app.engineMode(); }
+            getUiLanguage() { return this._app.uiLanguage(); }
+            setUiLanguage(language) { this._app.setUiLanguage(language); }
+            getStep() { return this._app.step(); }
+            goToStep(step) { this._app.goToStep(step); }
             getText(key) {
                 if (TEXT_KEYS.indexOf(key) === -1) return '';
                 return this._props[key] || '';
